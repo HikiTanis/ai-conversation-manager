@@ -32,3 +32,7 @@ Thumbs.db
 Desktop.ini
 .idea/
 .vscode/
+.tools/
+tests/dsh/.tmp/
+*.dshchat
+*.dshproject

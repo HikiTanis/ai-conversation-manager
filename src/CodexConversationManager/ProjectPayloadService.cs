@@ -556,7 +556,7 @@ internal static class ProjectPayloadService
 	private static string CreateConflictBackup(string stageRoot, string targetRoot, ProjectPayloadInfo payload, out HashSet<string> backedFiles)
 	{
 		backedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-		string backupRoot = Path.Combine(CodexCatalog.ResolveCodexHome(), "conversation-migrator-project-backups", DateTime.Now.ToString("yyyy-MM-dd"));
+		string backupRoot = Path.Combine(BackendContext.Home, "conversation-migrator-project-backups", DateTime.Now.ToString("yyyy-MM-dd"));
 		Directory.CreateDirectory(backupRoot);
 		string baseName = TextHelpers.SafeFileName(string.IsNullOrWhiteSpace(payload.root_name) ? "project" : payload.root_name);
 		string backupPath = Path.Combine(backupRoot, DateTime.Now.ToString("HHmmssfff") + "-" + baseName + ".zip");
@@ -675,12 +675,15 @@ internal static class ProjectPayloadService
 			throw new DirectoryNotFoundException("项目目标目录不存在：\n" + fullPath);
 		}
 		RejectDangerousRoot(fullPath, "还原");
-		string codexHome = Path.GetFullPath(CodexCatalog.ResolveCodexHome());
+		string codexHome = Path.GetFullPath(BackendContext.Home);
 		if (TextHelpers.IsWithin(fullPath, codexHome) || TextHelpers.IsWithin(codexHome, fullPath))
 		{
 			throw new InvalidOperationException("项目目标目录不能与 Codex 配置目录重叠。");
 		}
 		string applicationDirectory = Path.GetFullPath(AppDomain.CurrentDomain.BaseDirectory);
+		string otherHome = Path.GetFullPath(BackendContext.IsDsh ? CodexCatalog.ResolveCodexHome() : DshService.Home);
+		if (TextHelpers.IsWithin(fullPath, otherHome) || TextHelpers.IsWithin(otherHome, fullPath))
+			throw new InvalidOperationException("项目目标目录不能与另一数据源的配置目录重叠。");
 		if (TextHelpers.IsWithin(applicationDirectory, fullPath) || TextHelpers.IsWithin(fullPath, applicationDirectory))
 		{
 			throw new InvalidOperationException("项目目标目录不能与当前迁移工具目录重叠。");

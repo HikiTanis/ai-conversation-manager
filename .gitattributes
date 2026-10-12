@@ -12,3 +12,4 @@
 *.ico binary
 *.exe binary
 *.zip binary
+*.cjs text eol=lf

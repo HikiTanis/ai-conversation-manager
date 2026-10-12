@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
@@ -22,7 +22,7 @@ using Microsoft.Win32;
 
 namespace CodexConversationManager;
 
-internal sealed class MainWindowController
+internal sealed partial class MainWindowController
 {
 	private const double ConversationPreviewInset = 16.0;
 
@@ -298,7 +298,8 @@ internal sealed class MainWindowController
 			throw new FileNotFoundException("界面文件不存在。", text);
 		}
 		string localizedXaml = UiLanguage.LoadXaml(text);
-		window = (Window)XamlReader.Parse(localizedXaml);
+		window = (Window)XamlReader.Parse(localizedXaml.Replace("Icon=\"assets/app-icon.ico\"", ""));
+		window.Icon = System.Windows.Media.Imaging.BitmapFrame.Create(new Uri(System.IO.Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets/app-icon.ico")));
 		WindowWorkArea.Attach(window);
 		window.MinWidth = UiLanguage.IsEnglish ? 1040.0 : 900.0;
 		window.Tag = this;
@@ -391,6 +392,8 @@ internal sealed class MainWindowController
 		languageButton.Content = UiLanguage.IsEnglish ? "中文" : "EN";
 		languageButton.ToolTip = UiLanguage.IsEnglish ? "Switch to Chinese" : "切换到英文";
 		WireEvents();
+		WireDshEvents();
+		WireProviderEvents();
 		ShowBackupPage();
 	}
 
@@ -456,7 +459,7 @@ internal sealed class MainWindowController
 		}
 		UpdateSessionSelectionControls();
 		ToggleSessionSelection();
-		string projectFolderTerm = UiLanguage.IsEnglish ? "project folder" : "项目目录";
+		string projectFolderTerm = UiLanguage.IsEnglish ? "folder" : "项目目录";
 		bool projectOptionAdvertised = sessions.Count > 0 &&
 			sessions.All((SessionInfo session) => session.IsSelected) &&
 			(sessionModeHint.Text ?? string.Empty).IndexOf(projectFolderTerm, StringComparison.OrdinalIgnoreCase) >= 0 &&
@@ -1266,6 +1269,7 @@ internal sealed class MainWindowController
 
 	private async Task RefreshDataAsync()
 	{
+		if (BackendContext.IsDsh) { await RefreshDshAsync(); return; }
 		if (isBusy)
 		{
 			return;
@@ -1584,6 +1588,7 @@ internal sealed class MainWindowController
 		{
 			return false;
 		}
+		if (!MatchesArchiveFilter(sessionInfo)) return false;
 		if (sessionInfo.IsSubagent != showSubagentSessions)
 		{
 			return false;
@@ -1707,6 +1712,7 @@ internal sealed class MainWindowController
 
 	private void UpdateSessionSelectionControls()
 	{
+		UpdateDshControls();
 		List<SessionInfo> sessions = CurrentVisibleSessionTypeItems();
 		int selectedCount = sessions.Count((SessionInfo session) => session.IsSelected);
 		bool allSelected = sessions.Count > 0 && selectedCount == sessions.Count;
@@ -1896,7 +1902,7 @@ internal sealed class MainWindowController
 		InitializeConversationDialog();
 		try
 		{
-			ConversationReadResult result = await Task.Run(() => ConversationReader.Read(session));
+			ConversationReadResult result = await Task.Run(() => BackendContext.IsDsh ? DshService.ReadConversation(session) : ConversationReader.Read(session));
 			if (!IsConversationPreviewRequestCurrent(requestVersion, requestedThreadId))
 			{
 				return;
@@ -2415,7 +2421,7 @@ internal sealed class MainWindowController
 		bool deletingSubagent = session.IsSubagent;
 		List<SessionInfo> affectedSessions = BuildDeletionClosure(session);
 		int descendantCount = Math.Max(0, affectedSessions.Count - 1);
-		string projectPath = ConversationStorage.ResolveProjectPath(session, selectedProject);
+		string projectPath = ProviderStorage.ResolveProjectPath(session, selectedProject);
 		int relatedConversationCount = CountRelatedConversations(projectPath);
 		DeleteOptions options = DeleteOptionsDialog.Show(window, session, projectPath, relatedConversationCount, allowProjectActions: !deletingSubagent);
 		if (options == null)
@@ -2426,7 +2432,7 @@ internal sealed class MainWindowController
 		{
 			try
 			{
-				projectPath = ConversationStorage.ValidateProjectPath(projectPath);
+				projectPath = ProviderStorage.ValidateProjectPath(projectPath);
 			}
 			catch (Exception ex)
 			{
@@ -2465,7 +2471,7 @@ internal sealed class MainWindowController
 				string selectedProjectPath = projectPath;
 				operation = await Task.Run(delegate
 				{
-					DeletedSessionResult conversation = options.ConversationMode == ConversationDeleteMode.MoveToTrash ? ConversationStorage.MoveToTrash(session, selectedProjectPath, affectedSessions) : ConversationStorage.DeletePermanently(session, affectedSessions);
+					DeletedSessionResult conversation = options.ConversationMode == ConversationDeleteMode.MoveToTrash ? ProviderStorage.MoveToTrash(session, selectedProjectPath, affectedSessions) : ProviderStorage.DeletePermanently(session, affectedSessions);
 					DeleteOperationResult result = new DeleteOperationResult
 					{
 						Conversation = conversation,
@@ -2476,14 +2482,14 @@ internal sealed class MainWindowController
 					{
 						try
 						{
-							ConversationStorage.DeleteProject(selectedProjectPath, options.ProjectMode);
+							ProviderStorage.DeleteProject(selectedProjectPath, options.ProjectMode);
 							if (!conversation.PermanentlyDeleted)
 							{
 								try
 								{
 									foreach (string backupPath in conversation.BackupPaths.Count > 0 ? conversation.BackupPaths : new List<string> { conversation.BackupPath })
 									{
-										ConversationStorage.MarkProjectHandled(backupPath, selectedProjectPath, options.ProjectMode);
+										ProviderStorage.MarkProjectHandled(backupPath, selectedProjectPath, options.ProjectMode);
 									}
 								}
 								catch
@@ -2588,7 +2594,7 @@ internal sealed class MainWindowController
 				{
 					throw new InvalidOperationException(projectScope.AvailabilityBlockReason ?? (UiLanguage.IsEnglish ? "The project folder cannot be processed unless every related main conversation is selected." : "只有选中该目录关联的全部主对话后，才能处理项目目录。"));
 				}
-				projectPath = ConversationStorage.ValidateProjectPath(projectPath);
+				projectPath = ProviderStorage.ValidateProjectPath(projectPath);
 			}
 			catch (Exception ex)
 			{
@@ -2656,11 +2662,11 @@ internal sealed class MainWindowController
 						DeletedSessionResult deletionResult;
 						if (options.ConversationMode == ConversationDeleteMode.MoveToTrash)
 						{
-							deletionResult = ConversationStorage.MoveToTrash(session, projectPath, plan.AffectedSessions);
+							deletionResult = ProviderStorage.MoveToTrash(session, projectPath, plan.AffectedSessions);
 						}
 						else
 						{
-							deletionResult = ConversationStorage.DeletePermanently(session, plan.AffectedSessions);
+							deletionResult = ProviderStorage.DeletePermanently(session, plan.AffectedSessions);
 						}
 						deletionResults.Add(deletionResult);
 						completed += plan.AffectedSessions.Count((SessionInfo item) => selectedIds.Contains(item.ThreadId));
@@ -2684,7 +2690,7 @@ internal sealed class MainWindowController
 				}
 				try
 				{
-					ConversationStorage.DeleteProject(projectPath, options.ProjectMode);
+					ProviderStorage.DeleteProject(projectPath, options.ProjectMode);
 					projectProcessed = true;
 					if (options.ConversationMode == ConversationDeleteMode.MoveToTrash)
 					{
@@ -2697,7 +2703,7 @@ internal sealed class MainWindowController
 						{
 							try
 							{
-								ConversationStorage.MarkProjectHandled(backupPath, projectPath, options.ProjectMode);
+								ProviderStorage.MarkProjectHandled(backupPath, projectPath, options.ProjectMode);
 							}
 							catch (Exception ex)
 							{
@@ -2932,7 +2938,7 @@ internal sealed class MainWindowController
 			List<TrashSessionInfo> items;
 			try
 			{
-				items = await Task.Run(ConversationStorage.ReadTrash);
+				items = await Task.Run(ProviderStorage.ReadTrash);
 			}
 			catch (Exception ex)
 			{
@@ -2958,8 +2964,9 @@ internal sealed class MainWindowController
 				SetBusy(busy: true, "正在恢复会话……");
 				try
 				{
-					await Task.Run(() => ConversationStorage.Restore(request.Item));
+					await Task.Run(() => ProviderStorage.Restore(request.Item));
 					SetStatus("会话及侧边栏索引均已恢复。", error: false);
+					SetBusy(false, null);
 					await RefreshDataAsync();
 					AppDialog.ShowCompat(window, "会话已恢复到原位置，侧边栏索引也已重新登记。\n\n重新打开 Codex 后即可查看。", "恢复完成", MessageBoxButton.OK, MessageBoxImage.Asterisk);
 				}
@@ -2988,7 +2995,7 @@ internal sealed class MainWindowController
 				SetBusy(busy: true, "正在永久删除回收站备份……");
 				try
 				{
-					await Task.Run(() => ConversationStorage.DeleteFromTrash(request.Item));
+					await Task.Run(() => ProviderStorage.DeleteFromTrash(request.Item));
 					SetStatus("回收站会话备份已永久删除。", error: false);
 				}
 				catch (Exception ex)
@@ -3007,7 +3014,7 @@ internal sealed class MainWindowController
 				string validatedProjectPath;
 				try
 				{
-					validatedProjectPath = ConversationStorage.ValidateProjectPath(request.Item.ProjectPath);
+					validatedProjectPath = ProviderStorage.ValidateProjectPath(request.Item.ProjectPath);
 				}
 				catch (Exception ex)
 				{
@@ -3030,10 +3037,10 @@ internal sealed class MainWindowController
 				{
 					await Task.Run(delegate
 					{
-						ConversationStorage.DeleteProject(validatedProjectPath, mode);
+						ProviderStorage.DeleteProject(validatedProjectPath, mode);
 						try
 						{
-							ConversationStorage.MarkProjectHandled(request.Item, mode);
+							ProviderStorage.MarkProjectHandled(request.Item, mode);
 						}
 						catch
 						{
@@ -3057,6 +3064,7 @@ internal sealed class MainWindowController
 
 	private bool EnsureCodexClosedForConversationWrite()
 	{
+		if (BackendContext.IsDsh) return EnsureDshClosed();
 		try
 		{
 			CodexDesktopProjectRegistry.EnsureImportCanWrite(CodexCatalog.ResolveCodexHome());
@@ -3108,7 +3116,7 @@ internal sealed class MainWindowController
 		{
 			documents = Environment.GetFolderPath(Environment.SpecialFolder.UserProfile);
 		}
-		return System.IO.Path.Combine(documents, UiLanguage.IsEnglish ? "Codex Migration Packages" : "Codex 迁移包");
+		return System.IO.Path.Combine(documents, UiLanguage.T(UiLanguage.IsEnglish ? "Codex Migration Packages" : "Codex 迁移包"));
 	}
 
 	private void BrowseBackupFolder()
@@ -3215,6 +3223,7 @@ internal sealed class MainWindowController
 
 	private async Task CreateBatchPackAsync(IList<BackupProjectSelection> selections, bool includeProjectFiles, string output)
 	{
+		if (BackendContext.IsDsh) { await CreateDshPackageAsync(selections, includeProjectFiles, output); return; }
 		if (selections == null || selections.Count < 2)
 		{
 			throw new InvalidOperationException("批量迁移至少需要两个项目。");
@@ -3369,6 +3378,7 @@ internal sealed class MainWindowController
 
 	private async Task CreatePackAsync(ProjectGroup project, IList<SessionInfo> sessions, bool wholeProject, bool includeProjectFiles, string output)
 	{
+		if (BackendContext.IsDsh) { await CreateDshPackageAsync(new[] { new BackupProjectSelection { Project = project, Sessions = sessions.ToList() } }, includeProjectFiles, output); return; }
 		string temp = System.IO.Path.Combine(System.IO.Path.GetTempPath(), "codex-pack-" + Guid.NewGuid().ToString("N"));
 		Directory.CreateDirectory(temp);
 		SetBusy(busy: true, "正在创建迁移包……");
@@ -3522,6 +3532,7 @@ internal sealed class MainWindowController
 
 	private async Task LoadPackageSummaryAsync(string path)
 	{
+		if (BackendContext.IsDsh) { await LoadDshPackageSummaryAsync(path); return; }
 		loadedManifest = null;
 		loadedIsRawBundle = false;
 		loadedPackagePath = string.Empty;
@@ -3530,9 +3541,11 @@ internal sealed class MainWindowController
 		targetPathHelpText.Text = UiLanguage.T("目录可以与旧电脑不同，导入时会自动重写对话里的 cwd。");
 		try
 		{
+			if (!BackupPackageFormat.IsSupportedImport(path)) throw new InvalidDataException("当前为 Codex 模式，请选择 Codex 备份包；DSH 包请切换到 DSH 后导入。");
 			if (BackupPackageFormat.IsFormalPackage(path))
 			{
 				loadedManifest = await Task.Run(() => OuterPackageArchive.ReadManifest(path));
+				if (loadedManifest?.engine == "deepseek-harness") throw new InvalidDataException("这是 DSH 备份包，请切换到 DSH 后导入。");
 				if (loadedManifest == null)
 				{
 					throw new InvalidDataException("迁移包清单格式无效。");
@@ -3612,7 +3625,7 @@ internal sealed class MainWindowController
 		{
 			return new List<PackProject>();
 		}
-		if (manifest.schema >= 4 && manifest.projects != null && manifest.projects.Count > 0)
+		if ((manifest.schema >= 4 || manifest.engine == "deepseek-harness") && manifest.projects != null && manifest.projects.Count > 0)
 		{
 			return manifest.projects.Where((PackProject project) => project != null).ToList();
 		}
@@ -3892,11 +3905,13 @@ internal sealed class MainWindowController
 
 	private async Task ImportPackageAsync(bool dryRun)
 	{
+		if (BackendContext.IsDsh) { await ImportDshPackageAsync(dryRun); return; }
 		if (isBusy)
 		{
 			return;
 		}
 		string package = packagePathBox.Text.Trim();
+		if (!BackupPackageFormat.IsSupportedImport(package)) { AppDialog.ShowCompat(window, "当前为 Codex 模式，请选择 Codex 备份包；DSH 包请切换到 DSH 后导入。", "备份包与数据源不匹配", MessageBoxButton.OK, MessageBoxImage.Warning); return; }
 		if (!File.Exists(package))
 		{
 			AppDialog.Show(window, "找不到备份文件", "请选择有效文件", "文件路径不存在或已经移动。请选择 .codexchat、.codexproject；旧版 .codexpack 和 .codexbundle 仍可导入。", AppDialogTone.Warning, "重新选择");
@@ -4352,6 +4367,9 @@ internal sealed class MainWindowController
 			SetStatus(message, error: false);
 		}
 		languageButton.IsEnabled = !busy;
+		Find<System.Windows.Controls.RadioButton>("PrimaryProviderRadio").IsEnabled = !busy;
+		Find<System.Windows.Controls.RadioButton>("DshProviderRadio").IsEnabled = !busy;
+		UpdateDshControls();
 	}
 
 	private void SetStatus(string text, bool error)

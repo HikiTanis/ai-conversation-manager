@@ -1,122 +1,93 @@
 # Codex Conversation Manager
 
-**Manage, back up, and migrate local Codex conversations and projects on Windows.**
+**One Windows app for Codex and DeepSeek Harness (DSH) conversations and projects.**
 
-[简体中文](README.zh-CN.md) · Current release: v1.0.3
+[简体中文](README.zh-CN.md) · Current release: **v1.1.0** · [Download](https://github.com/HikiTanis/codex-conversation-manager/releases/tag/v1.1.0)
 
-The application keeps Codex projects, main conversations, and subagent conversations organized in one place. It reconnects conversations after a project is renamed or moved, explains local storage use, migrates work between computers, and helps avoid or repair stale sidebar entries during cleanup.
+Switch **Codex / DSH** in the top-right of the original manager UI. Projects, conversations, previews, trash and backup/import use the selected provider. The app remembers the last provider; switching clears selections, search and pending import paths. Switching is disabled during an operation.
 
-> This is an unofficial community project. It is not affiliated with or endorsed by OpenAI. Codex local-storage formats may change; keep an independent backup of important data.
+This is an unofficial community tool, not affiliated with OpenAI or DeepSeek.
 
-## Problems it solves
+## Supported features
 
-- **A project moved and its conversations disappeared:** reassociate existing conversations with a renamed, relocated, or copied project folder.
-- **Local storage is hard to understand:** separate main and subagent conversations by project, with project totals and each conversation's time, size, Thread ID, and actual path.
-- **Subagents have accumulated:** search, select, select all, and batch-delete main or subagent conversations; after selecting every main conversation in a project, the same operation can also process its folder.
-- **Projects and conversations are difficult to move together:** transfer selected conversations alone, or package one or more projects with all linked conversations.
-- **Round trips create duplicates or shared files:** merge by original identity, or create fresh Thread IDs and fully independent session files.
+| Capability | Codex | DSH |
+| --- | --- | --- |
+| Project grouping, paths, sizes, search, main/subagent views | Yes | Yes |
+| All / Active / Archived classification | Yes | Yes |
+| Archive / unarchive selected conversations | Use Codex itself | Yes, native archive state |
+| Message preview and user-message navigation | Uncompressed JSONL; full-history viewer | Session v4 JSONL and multi-frame Zstandard; preview limit below |
+| Batch deletion, trash, restore, permanent removal | Existing official-protocol integration | Offline local session/workspace adapter |
+| Delete descendants with a parent | Yes | Yes |
+| Optional project-folder handling | Windows Recycle Bin or permanent deletion | Same workflow |
+| Conversation-only backup | `.codexchat` | `.dshchat` |
+| Projects + conversations backup | `.codexproject` | `.dshproject` |
+| Inspect before import, destination mapping, merge/copy | Yes | Yes; merge rejects divergent history |
+| Legacy backup import | `.codexpack`, `.codexbundle` | No |
+| Stale Codex sidebar detection/repair | Yes | Not applicable |
+| Interrupted DSH operation recovery | Not applicable | Yes |
 
-## Core capabilities
-
-| Area | What it does |
-| --- | --- |
-| Conversation and project management | Shows each project folder, file count, and total size; separates main and subagent conversations; fully displays long conversations and opens at the latest message; the user-message rail supports hover previews, click/drag navigation, and a viewer that follows the main window size |
-| Backup and migration | Creates `.codexchat` from selected main conversations across projects, or `.codexproject` from one or more projects with linked main and subagent conversations |
-| Project reassociation | Maps a conversation's recorded project path to a new folder and updates the local task index and desktop-project association |
-| Two import identities | **Smart merge** continues the same lineage; **Independent copy** creates fresh Thread IDs and session files, so deleting one copy cannot delete the other |
-| Cleanup and recovery | Batch-moves records to app trash, restores them, or permanently deletes them; selecting every main conversation in a project enables optional project-folder handling and evidence-backed stale-sidebar repair |
-| Chinese and English UI | Switches between Simplified Chinese and English inside the application |
-
-Inspection, backup, dry-run validation, and import are built into the application. They require neither a separate transfer utility nor Codex CLI. **Only conversation deletion (app trash or permanent deletion) and stale-sidebar repair require Codex CLI 0.148.0 or later; the latest version is recommended.** Sending or deleting a project folder through Windows does not itself require the CLI.
+Chinese and English share the same window layout. Some DSH action prompts and diagnostic messages remain Chinese. Provider selection does **not** convert Codex conversations to DSH or vice versa; their packages cannot be cross-imported.
 
 ## Download and run
 
-End-user requirements:
+1. Download `CodexConversationManager-Windows-v1.1.0.zip` and `SHA256SUMS.txt` from the release above.
+2. Compare `(Get-FileHash .\CodexConversationManager-Windows-v1.1.0.zip -Algorithm SHA256).Hash` with `SHA256SUMS.txt`.
+3. Extract the complete ZIP into a new folder. Keep the EXE, XAML, `assets`, `backend.cjs` and `packages.cjs` together.
+4. Double-click `Start.cmd` or `CodexConversationManager.exe`, then select **Codex** or **DSH**.
 
-- 64-bit Windows 10 or Windows 11;
-- [.NET Framework 4.8 Runtime](https://dotnet.microsoft.com/en-us/download/dotnet-framework/net48);
-- for deletion or sidebar repair only, a compatible locally available [Codex CLI](https://developers.openai.com/codex/cli) 0.148.0 or later. Run `codex --version` to confirm it; the application can also discover compatible runtimes bundled with Codex Desktop or the VS Code extension. Version 0.148.0 is this project's compatibility baseline, not an official OpenAI minimum.
+The portable application is not Authenticode-signed; Windows may show an unknown-publisher warning. It has no installer, telemetry, cloud sync or automatic updater.
 
-The application is portable and does not need an installer:
+### Requirements
 
-1. Download `CodexConversationManager-Windows-v1.0.3.zip` and `SHA256SUMS.txt` from GitHub Releases.
-2. Compare the release checksum:
+- 64-bit Windows 10/11 and .NET Framework 4.8 Runtime.
+- **Codex:** inspection, preview, backup and import use the built-in native engine. Conversation deletion and sidebar repair require **Codex CLI 0.148.0 or later** (this project's compatibility baseline). Compatible Desktop/VS Code bundled runtimes can be discovered automatically.
+- **DSH:** a local Node.js runtime with Zstandard support: Node.js 22.15+ or 24+. The manager checks DSH's bundled runtime, `runtime/node.exe` beside the EXE, and PATH. Node.js is not included in the release ZIP.
+- Codex uses `CODEX_HOME` or its normal default. DSH uses `%USERPROFILE%/.dsh`, the **Data folder** chooser, or `DSH_MANAGER_HOME`.
 
-   ```powershell
-   $zip = '.\CodexConversationManager-Windows-v1.0.3.zip'
-   (Get-FileHash $zip -Algorithm SHA256).Hash
-   Get-Content .\SHA256SUMS.txt
-   ```
+Fully exit the corresponding client before import, deletion or restoration, and exit DSH before archive changes. Do not restart it while an operation is running.
 
-   The two SHA-256 values must match.
-3. Extract the complete ZIP into a new folder. Do not run it from inside the archive or mix files from different versions.
-4. Double-click `Start.cmd`, or run `CodexConversationManager.exe`.
+## Common workflows
 
-The executable is not currently Authenticode-signed, so Windows may show an unknown-publisher warning. Download only from a release source you trust and verify the SHA-256 first.
+- **Review and clean up:** select a project, choose main conversations or subagents, apply the archive filter, preview records, then select and delete. Parent deletion includes linked descendants. App trash supports recovery; moving to trash does not free the space retained by its backup.
+- **Move or rename a project:** create a conversation-only backup, move the project folder, then import into its new location. Inspect first. Merge identifies the original conversation within the destination project; copy creates independent IDs/files.
+- **Move everything together:** choose Projects + conversations, select projects, and create a project package. On the destination computer, choose the restore directory and file-conflict policy, inspect, then import.
+- **DSH archives:** select visible records and choose Archive selected or Unarchive. Archiving removes pinning but retains workspace order. Unarchiving does not reinstate an old pin.
 
-## Three common workflows
+Conversation-only packages contain selected main conversations across projects. Project packages include project files and all associated main/subagent conversations. Backups remain independent files even if the source conversation is later deleted.
 
-### 1. Rename or move a project on the same computer
+## Compatibility and limits
 
-1. Create a `.codexchat` for the conversations associated with the original project. If the folder has already moved, you can still scan and back up the old conversations while their session files remain; do not delete them first.
-2. After renaming or moving the project, import the backup and select the new project folder.
-3. Run the read-only inspection. If it passes, exit Codex completely and import with **Smart merge**.
-4. Reopen Codex and the relocated project, then confirm that its conversations appear under the project.
+- Codex `.jsonl.zst` is metadata-only: no content preview, formal backup or import. Legacy and validated paginated uncompressed histories retain the existing compatibility checks.
+- DSH is adapted to Desktop **0.2.0-rc.2**, workspace v2 and session v4. Unknown formats, ambiguous IDs, link paths and incomplete scans block writes. Custom session/storage roots and third-party plugin state are unsupported.
+- DSH reads logs up to 128 MiB compressed and decompressed, and displays up to 2 million preview characters. Shared attachments, model logs and plugin storage are not erased when a session is deleted.
+- DSH has synthetic write/rollback tests and local read-only verification. Real-session writes and client restart/resumption have **not** been validated end to end. Keep the source backup until the destination client can open the imported history.
+- Project archives preserve ordinary files, empty directories and modification times, not junctions, symlinks, ACLs or alternate data streams. Restore supports empty destination, keep existing, or overwrite with a recovery backup.
+- Conversation import has rollback records. Project files already restored are not fully rolled back if a later conversation import fails; retain the reported directories and overwrite backups.
+- Backups, trash and recovery files are unencrypted and can contain prompts, secrets and project source. Do not post real data in public issues.
 
-### 2. Copy a project yourself and migrate conversations only
+## Repository and development
 
-1. Select main conversations across one or more projects and create a `.codexchat` on the source computer.
-2. Copy the project folders and the backup file separately to the destination computer.
-3. Import the backup and map every source project to its actual destination folder. Use **Smart merge** to continue the same lineage, or **Independent copy** for a separate copy.
+```text
+src/CodexConversationManager/   Shared WPF UI and existing Codex engine
+  Providers/                   Provider selection and operation routing
+    Dsh/                       DSH controller, process and package adapters
+adapters/dsh/                  Node backend, native DSH storage and packages
+tests/ui/                     Synthetic WPF/provider regression entry points
+tests/dsh/                    Node storage, archive and rollback tests
+scripts/                       Build, test, package and release verification
+packaging/                     Portable launcher
+docs/                          Formats, privacy, architecture and releases
+```
 
-### 3. Move projects and conversations together
-
-1. Select one or more projects and create a `.codexproject`.
-2. On the destination computer, choose where to restore each project, inspect the package, and then import the project files and all linked conversations.
-3. To bring later work back to the first computer, create another backup and use **Smart merge**. Matching is limited to the selected destination project.
-
-> Exit Codex completely before import, deletion, restoration, or sidebar repair so the running client cannot overwrite local state. Keep the source package until every imported conversation has been opened and verified in the destination Codex client.
-
-## Backup formats
-
-| Extension | Contents | Use it for |
-| --- | --- | --- |
-| `.codexchat` | Selected main conversations across projects; no project files or subagents | Renamed or moved projects, manually copied projects, and conversation-only archives or transfers |
-| `.codexproject` | One or more project folders plus all linked main and subagent conversations | Complete project-and-conversation backup or migration |
-| `.codexpack` / `.codexbundle` | Backups from older releases | Legacy import only; new packages are not created in these formats |
-
-App trash is not a formal backup. It lives at `<CODEX_HOME>\conversation-migrator-trash` and exists for recovery from accidental deletion. Moving a session there usually does not reclaim space on drive C; permanently purge confirmed-unneeded entries to release that space.
-
-See `docs/BACKUP_FORMATS.md` in the source repository for package structure, conflict handling, validation, and resource limits.
-
-## Compatibility and limitations
-
-- `.jsonl.zst` sessions currently expose index time, size, and path only. Their content cannot be previewed, included in a formal backup, or imported; keep the original compressed file.
-- `.codexproject` preserves ordinary files, empty directories, and modification times. It does not transfer junctions, symbolic links, NTFS permissions, or alternate data streams.
-- Project restore can require an empty destination, keep existing same-name files, or create a recovery ZIP before overwriting. Review the destination and available disk space first.
-- Import validates paths, Thread IDs, checksums, archive structure, and resource boundaries, and uses transaction snapshots for rollback. It cannot guarantee compatibility with an unknown future Codex storage format.
-- For `paginated` history, import stops when complete-history, turn-pagination, or resume conditions cannot be validated safely. Still open every imported conversation in the destination Codex client to verify it.
-
-## Privacy and safety
-
-- The application runs locally and has no telemetry, cloud sync, account system, or automatic updater.
-- Formal packages, recovery ZIPs, and app-trash entries are not encrypted. They may contain prompts, responses, source code, command output, local paths, and secrets; handle them as sensitive files.
-- Permanent deletion cannot be undone by this application. Verify the full path before deleting a project folder.
-- Formal packages remain user-managed files. Deleting a source conversation does not delete an existing `.codexchat` or `.codexproject`.
-- Never upload a real backup, session JSONL, Codex database, or unredacted screenshot to a public issue.
-
-For the complete privacy and security boundaries, see `docs/PRIVACY.md` and `.github/SECURITY.md` in the source repository.
-
-## Development and documentation
-
-Source builds require Windows 10/11, .NET SDK 8.x, and PowerShell 5.1 or later. A separate .NET Framework 4.8 Targeting Pack is not required. From the repository root, run:
+Source builds use Windows, .NET SDK 8.x, Node.js 24 and PowerShell 5.1+. The .NET Framework reference assemblies are restored from NuGet.
 
 ```powershell
+.\scripts\build.ps1
+.\scripts\test.ps1 -NoBuild
+.\scripts\test-providers.ps1 -NoBuild
 .\scripts\package.ps1
 ```
 
-The script restores pinned dependencies, builds the application, runs Chinese and English functional and UI tests, validates the release candidate, and writes the ZIP plus `SHA256SUMS.txt` to `release/`. `VERSION` is the single source of truth for the release version.
+From a source checkout, root `Start.cmd` runs the Release build (building it if missing). Release ZIPs use the separate portable launcher. Local `.tools`, `artifacts`, build output and generated release assets are ignored; no real conversation data belongs in source control.
 
-The source repository also contains `docs/releases/v1.0.3.md` (release notes), `CHANGELOG.md` (version history), `docs/RELEASING.md` (maintainer workflow), `.github/SUPPORT.md` (issue reporting), and `.github/CONTRIBUTING.md` (contributor guide).
-
-Licensed under the [MIT License](LICENSE).
+See `docs/ARCHITECTURE.md`, `docs/BACKUP_FORMATS.md`, `docs/PRIVACY.md`, `docs/RELEASING.md`, `docs/releases/v1.1.0.md` and `CHANGELOG.md` in the source repository. Licensed under the [MIT License](LICENSE).

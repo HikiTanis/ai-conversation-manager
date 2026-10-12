@@ -46,7 +46,7 @@ if (-not [string]::Equals($Version, $canonicalVersion, [StringComparison]::Ordin
 $windowVersionText = 'Text="v' + $Version + '"'
 $protocolVersionExpression = 'typeof(CodexAppServerThreadDeletion).Assembly.GetName().Version?.ToString(3)'
 Assert-FileContains (Join-Path $repoRoot 'src\CodexConversationManager\CodexConversationManager.xaml') $windowVersionText 'Window version label'
-Assert-FileContains (Join-Path $repoRoot 'src\CodexConversationManager\DeletionDialogs.cs') '/CodexConversationManager;component/DialogTheme.xaml' 'Dialog theme resource path'
+Assert-FileContains (Join-Path $repoRoot 'src\CodexConversationManager\DeletionDialogs.cs') 'Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "DialogTheme.xaml")' 'Dialog theme resource path'
 Assert-FileContains (Join-Path $repoRoot 'src\CodexConversationManager\CodexAppServerThreadDeletion.cs') $protocolVersionExpression 'Codex app-server client version source'
 Assert-FileContains (Join-Path $repoRoot 'README.md') "CodexConversationManager-Windows-v$Version.zip" 'English download instructions'
 Assert-FileContains (Join-Path $repoRoot 'README.zh-CN.md') "CodexConversationManager-Windows-v$Version.zip" 'Chinese download instructions'
@@ -109,6 +109,10 @@ if (-not [string]::IsNullOrWhiteSpace($PackagePath)) {
             'CodexConversationManager.exe',
             'CodexConversationManager.exe.config',
             'CodexConversationManager.xaml',
+            'DialogTheme.xaml',
+            'backend.cjs',
+            'packages.cjs',
+            'assets\app-icon.ico',
             'Start.cmd',
             'VERSION',
             'README.md',
@@ -180,7 +184,8 @@ if (-not [string]::IsNullOrWhiteSpace($PackagePath)) {
     }
     finally {
         if (Test-Path -LiteralPath $temporaryRoot) {
-            Remove-Item -LiteralPath $temporaryRoot -Recurse -Force
+            if (-not [IO.Path]::GetFullPath($temporaryRoot).StartsWith(([IO.Path]::GetFullPath(([IO.Path]::GetTempPath())).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar), [StringComparison]::OrdinalIgnoreCase)) { throw "Unsafe cleanup path: $temporaryRoot" }
+        Remove-Item -LiteralPath $temporaryRoot -Recurse -Force
         }
     }
 }

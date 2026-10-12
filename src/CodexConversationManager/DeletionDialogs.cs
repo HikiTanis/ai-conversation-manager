@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -562,7 +562,7 @@ internal static class DialogUi
 		}
 		dialog.Resources.MergedDictionaries.Add(new ResourceDictionary
 		{
-			Source = new Uri("/CodexConversationManager;component/DialogTheme.xaml", UriKind.Relative)
+			Source = new Uri(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "DialogTheme.xaml"), UriKind.Absolute)
 		});
 		return dialog;
 	}

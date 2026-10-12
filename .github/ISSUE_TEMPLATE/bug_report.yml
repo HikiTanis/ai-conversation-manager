@@ -14,10 +14,20 @@ body:
       placeholder: Version shown in the app
     validations:
       required: true
+  - type: dropdown
+    id: provider
+    attributes:
+      label: Selected provider
+      options:
+        - Codex
+        - DSH (DeepSeek Harness)
+        - Both / switching
+    validations:
+      required: true
   - type: input
     id: environment
     attributes:
-      label: Windows and Codex versions
+      label: Windows, desktop client, and Node.js versions (for DSH)
       placeholder: Windows 11 24H2; Codex ...
     validations:
       required: true
@@ -29,6 +39,7 @@ body:
         - Backup
         - Import or restore
         - Conversation viewing
+        - Archive filters or DSH archive actions
         - Project or path reassociation
         - Trash, deletion, or sidebar repair
         - Language or UI

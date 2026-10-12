@@ -104,6 +104,7 @@ internal sealed class SessionInfo : NotifyObject
 				return UiLanguage.T("子代理");
 			}
 			string text = (Source ?? string.Empty).ToLowerInvariant();
+			if (text.Contains("dsh")) return "DeepSeek";
 			if (text.Contains("vscode"))
 			{
 				return "VS Code";
@@ -141,7 +142,7 @@ internal sealed class SessionInfo : NotifyObject
 		}
 	}
 
-	public string DisplayMetadata => DisplayTime + " · " + DisplaySource + " · " + DisplaySize + " · " + ShortId;
+	public string DisplayMetadata => UiLanguage.T(Archived ? "已归档" : "未归档") + " · " + DisplayTime + " · " + DisplaySource + " · " + DisplaySize + " · " + ShortId;
 
 	public string ShortId
 	{

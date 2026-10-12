@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
@@ -19,6 +19,9 @@ internal static class Program
 	[STAThread]
 	private static int Main(string[] args)
 	{
+		BackendContext.Initialize(args);
+		if (args.Contains("--dsh-ui-test")) return DshUiTests.Run(args.Select(a => a == "--dsh-ui-test" ? "--ui-test" : a).ToArray());
+		if (args.Contains("--provider-test")) return ProviderUiTests.Run(args);
 		string report = string.Empty;
 		string text = string.Empty;
 		string language = string.Empty;
@@ -1848,7 +1851,7 @@ internal static class Program
 			}
 			{
 				string localizedXaml = UiLanguage.LoadXaml(text);
-				object obj = XamlReader.Parse(localizedXaml);
+				object obj = XamlReader.Parse(localizedXaml.Replace("Icon=\"assets/app-icon.ico\"", ""));
 				if (!(obj is Window window))
 				{
 					throw new InvalidDataException("XAML root is not Window");
@@ -1870,6 +1873,7 @@ internal static class Program
 						throw new InvalidDataException("UI control missing: " + text2);
 					}
 				}
+				window.Icon = BitmapFrame.Create(new Uri(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "assets/app-icon.ico")));
 				if (window.Icon == null)
 				{
 					throw new InvalidDataException("application icon was not loaded");

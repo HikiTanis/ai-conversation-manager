@@ -2,7 +2,7 @@
 
 The application distinguishes user-created backup packages from the app trash. They serve different purposes and should not be managed as interchangeable backups.
 
-Inspection, package creation, dry-run validation, and import are implemented by the application's built-in native engine. These operations do not invoke or require a third-party migration executable. Codex CLI 0.148.0 or later is used only for conversation deletion and supported legacy-sidebar repair; the latest CLI release is recommended.
+For Codex, inspection, package creation, dry-run validation, and import are implemented by the application's built-in native engine. These operations do not invoke or require a third-party migration executable. Codex CLI 0.148.0 or later is used only for conversation deletion and supported legacy-sidebar repair; the latest CLI release is recommended.
 
 ## Storage types at a glance
 
@@ -105,3 +105,19 @@ Backup creation applies the matching project-payload limits so the application d
 ## Confidentiality
 
 Formal packages and app-trash records are not encrypted. They may contain complete prompts, responses, source code, command output, local paths, environment details, credentials, and secrets. Inspect and transfer them as sensitive files, and never attach a real package to a public issue.
+
+## DeepSeek Harness formats (v1.1.0)
+
+The sections above describe the existing Codex engine. DSH uses the same outer ZIP/path-validated project payload layer, but a separate conversation manifest (`schema: 1`, `engine: deepseek-harness`). Its schema numbering is independent of Codex schemas.
+
+- `.dshchat`: selected main conversations across projects, no project payload.
+- `.dshproject`: selected project directories plus associated main/subagent sessions.
+- `native_sessions` records session identity/origin, cwd, parent, archive/pin state, log name and a SHA-256/length file inventory. Session folders are stored under numbered package folders; native DSH directory encoding is recreated on import.
+- Project payload ZIPs use the shared project-file validation/conflict implementation. Only the selected provider's package is accepted; changing the filename cannot convert its manifest.
+- Merge matches original identity within the destination project, accepts matching/prefix-continuation event histories and rejects forks. Independent copy gives each session a fresh ID and remaps included parent references. A parent absent from the package is detached with a warning.
+- The local `conversation-manager-lineage.json` retains origin information. DSH `conversation-manager-trash` contains deletion batches and write/recovery records; it is not a user-managed formal backup.
+- DSH supports session v4 `.jsonl` and concatenated `.jsonl.zstd` frames, unlike Codex's metadata-only `.jsonl.zst`. Each encoded/decoded log is capped at 128 MiB; previews at 2 million characters; packages at 10,000 sessions and 50,000 declared files per session, in addition to outer ZIP/project limits.
+- Import stages new session data, records original workspace/lineage and moved originals, revalidates the plan, then commits. Recovery refuses to remove changed imported data or overwrite unrelated new workspace state.
+- Project restore and conversation import are separate operations: a subsequent conversation failure can leave already restored project files in place. Overwrite recovery paths are reported.
+
+DSH compatibility is based on Desktop 0.2.0-rc.2, workspace v2 and session v4. Synthetic round-trip/rollback tests do not replace opening and resuming the imported session in the destination client; retain source packages until verified.

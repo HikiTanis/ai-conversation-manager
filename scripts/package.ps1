@@ -1,4 +1,4 @@
-[CmdletBinding()]
+﻿[CmdletBinding()]
 param(
     [string]$Version,
     [switch]$SkipTests,
@@ -67,13 +67,17 @@ try {
     & (Join-Path $scriptRoot 'build.ps1') -Configuration Release
     if (-not $SkipTests) {
         & (Join-Path $scriptRoot 'test.ps1') -NoBuild -SkipUiTests:$SkipUiTests
+        & (Join-Path $scriptRoot 'test-providers.ps1') -NoBuild -SkipUiTests:$SkipUiTests
     }
 
     New-Item -ItemType Directory -Path $stage -Force | Out-Null
     $files = @(
         'CodexConversationManager.exe',
         'CodexConversationManager.exe.config',
-        'CodexConversationManager.xaml'
+        'CodexConversationManager.xaml',
+        'DialogTheme.xaml',
+        'backend.cjs',
+        'packages.cjs'
     )
     foreach ($file in $files) {
         $source = Join-Path $buildRoot $file
@@ -83,6 +87,8 @@ try {
         Copy-Item -LiteralPath $source -Destination (Join-Path $stage $file)
     }
 
+    New-Item -ItemType Directory -Path (Join-Path $stage 'assets') -Force | Out-Null
+    Copy-Item -LiteralPath (Join-Path $buildRoot 'assets\app-icon.ico') -Destination (Join-Path $stage 'assets\app-icon.ico')
     Copy-Item -LiteralPath (Join-Path $repoRoot 'packaging\Start.cmd') -Destination (Join-Path $stage 'Start.cmd')
     Copy-Item -LiteralPath (Join-Path $repoRoot 'VERSION') -Destination (Join-Path $stage 'VERSION')
     Copy-Item -LiteralPath (Join-Path $repoRoot 'README.md') -Destination (Join-Path $stage 'README.md')
@@ -154,9 +160,11 @@ try {
 }
 finally {
     if (Test-Path -LiteralPath $stage) {
+        if (-not [IO.Path]::GetFullPath($stage).StartsWith(([IO.Path]::GetFullPath($releaseRoot).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar), [StringComparison]::OrdinalIgnoreCase)) { throw "Unsafe cleanup path: $stage" }
         Remove-Item -LiteralPath $stage -Recurse -Force
     }
     if (Test-Path -LiteralPath $candidateRoot) {
+        if (-not [IO.Path]::GetFullPath($candidateRoot).StartsWith(([IO.Path]::GetFullPath($releaseRoot).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar), [StringComparison]::OrdinalIgnoreCase)) { throw "Unsafe cleanup path: $candidateRoot" }
         Remove-Item -LiteralPath $candidateRoot -Recurse -Force
     }
 }

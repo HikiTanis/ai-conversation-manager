@@ -37,14 +37,15 @@ It performs the following work:
 - restores the pinned NuGet dependencies, including `Microsoft.NETFramework.ReferenceAssemblies.net48`;
 - creates a Release build;
 - runs Chinese and English functional, window-chrome, and render tests in a temporary synthetic Codex home;
+- runs the DSH Node.js regression suite plus provider switching and DSH UI tests using synthetic homes (`scripts/test-providers.ps1`);
 - creates a deterministic candidate ZIP containing only the portable application, concise bilingual README files, version, and license;
 - creates the candidate SHA-256 checksum;
 - verifies the ZIP file list, Markdown links, EXE version, hash, and absence of an absolute PDB path;
 - atomically publishes and verifies the current ZIP plus `SHA256SUMS.txt`, then removes older local ZIP versions only after that pair is durable.
 
-Source packaging requires Windows, .NET SDK 8.x, and PowerShell 5.1 or newer. The pinned reference-assemblies package removes the need for a separately installed .NET Framework 4.8 Targeting Pack. The application uses its built-in native engine for inspection, backup, and import, so the build and release package must not download, invoke, or contain a separate conversation-transfer executable.
+Source packaging requires Windows, .NET SDK 8.x, Node.js 24+, and PowerShell 5.1 or newer. The pinned reference-assemblies package removes the need for a separately installed .NET Framework 4.8 Targeting Pack. Codex uses its built-in native engine; DSH uses the repository adapters in a local Node.js subprocess, so the build and release package must not download, invoke, or contain a separate conversation-transfer executable.
 
-Review `artifacts/test/`; every self-test and chrome report must pass, every expected PNG must be present, and no `*.error.txt` file may exist.
+Review `artifacts/test/` and `artifacts/unified-*/`; every self-test and chrome report must pass, every expected PNG must be present, and no `*.error.txt` file may exist.
 
 Before the first public release, enable **Private vulnerability reporting** under the repository's GitHub security settings so `.github/SECURITY.md` points to a working private channel.
 
@@ -61,6 +62,10 @@ After extraction, the ZIP itself must contain exactly:
 - `CodexConversationManager.exe`
 - `CodexConversationManager.exe.config`
 - `CodexConversationManager.xaml`
+- `DialogTheme.xaml`
+- `backend.cjs`
+- `packages.cjs`
+- `assets/app-icon.ico`
 - `Start.cmd`
 - `VERSION`
 - `README.md`
@@ -108,6 +113,7 @@ After configuring the intended `origin` remote:
 ```powershell
 $version = (Get-Content .\VERSION -Raw).Trim()
 git push origin main
+# Wait for the branch build to pass before publishing the tag.
 git push origin "v$version"
 ```
 

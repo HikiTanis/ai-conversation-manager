@@ -4,7 +4,7 @@
         x:Name="RootWindow"
         Title="Codex 对话与项目管理器"
         Width="1260" Height="800" MinWidth="900" MinHeight="620"
-        Icon="pack://application:,,,/CodexConversationManager;component/assets/app-icon.ico"
+        Icon="assets/app-icon.ico"
         WindowStartupLocation="CenterScreen"
         WindowStyle="None" ResizeMode="CanResize"
         Background="#F4F4F1"
@@ -638,7 +638,7 @@
                         <Border Margin="10,1,0,0" Padding="8,3" CornerRadius="7" Background="#F0F1ED">
                             <TextBlock Text="对话与项目管理器" Foreground="{StaticResource Muted}" FontSize="12" />
                         </Border>
-                        <TextBlock Text="v1.0.3" Foreground="{StaticResource Faint}" FontSize="11.5" Margin="9,2,0,0" VerticalAlignment="Center" />
+                        <TextBlock Text="v1.1.0" Foreground="{StaticResource Faint}" FontSize="11.5" Margin="9,2,0,0" VerticalAlignment="Center" />
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" shell:WindowChrome.IsHitTestVisibleInChrome="True">
                         <Button x:Name="LanguageButton" Style="{StaticResource LanguageButton}" Content="EN" ToolTip="切换为英文" Margin="0,0,8,0" />
@@ -683,13 +683,18 @@
                             <Border x:Name="ImportTabIndicator" Height="3" Width="72" CornerRadius="2" Background="{StaticResource Accent}" VerticalAlignment="Bottom" Margin="0,0,0,1" Visibility="Collapsed" />
                         </Grid>
                     </StackPanel>
-                </Grid>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" VerticalAlignment="Center" Margin="0,0,16,0">
+<RadioButton x:Name="PrimaryProviderRadio" GroupName="Provider" Style="{StaticResource ImportModeSegment}" Content="Codex" Margin="0,0,4,0" />
+                        <RadioButton x:Name="DshProviderRadio" GroupName="Provider" Style="{StaticResource ImportModeSegment}" Content="DSH" Margin="0,0,12,0" />
+                        <Button x:Name="DshHomeButton" Style="{StaticResource SecondaryButton}" Content="数据目录" Height="30" MinWidth="80"/>
+<Button x:Name="DshRecoveryButton" Style="{StaticResource SecondaryButton}" Content="恢复中断操作" Height="30" MinWidth="104" Margin="8,0,0,0"/>
+</StackPanel></Grid>
             </Border>
 
             <Grid Grid.Row="2">
                 <Grid x:Name="BackupPage">
                     <Grid.RowDefinitions>
-                        <RowDefinition Height="118" />
+                        <RowDefinition x:Name="BackupOptionsRow" Height="118" />
                         <RowDefinition Height="*" />
                     </Grid.RowDefinitions>
 
@@ -786,13 +791,13 @@
                         <Border Grid.Column="2" Background="{StaticResource Panel}" BorderBrush="{StaticResource Line}" BorderThickness="1" CornerRadius="15">
                             <Grid>
                                 <Grid.RowDefinitions>
-                                    <RowDefinition Height="Auto" MinHeight="126" />
-                                    <RowDefinition Height="66" />
+                                    <RowDefinition x:Name="ProjectHeaderRow" Height="Auto" MinHeight="126" />
+                                    <RowDefinition x:Name="SessionToolbarRow" Height="110" />
                                     <RowDefinition Height="*" />
-                                    <RowDefinition Height="82" />
+                                    <RowDefinition x:Name="SessionFooterRow" Height="82" />
                                 </Grid.RowDefinitions>
 
-                                <Border MinHeight="126" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="20,13,20,14">
+                                <Border x:Name="ProjectHeaderBorder" MinHeight="126" BorderBrush="{StaticResource Line}" BorderThickness="0,0,0,1" Padding="20,13,20,14">
                                     <StackPanel VerticalAlignment="Center">
                                         <TextBlock x:Name="ProjectTitleText" Text="选择一个项目" Foreground="{StaticResource Ink}" FontFamily="Segoe UI Variable Display, Microsoft YaHei UI" FontSize="19" FontWeight="SemiBold" LineHeight="25" TextTrimming="CharacterEllipsis" ToolTip="{Binding Text, RelativeSource={RelativeSource Self}}" />
                                         <Grid Margin="0,4,0,0">
@@ -811,7 +816,8 @@
                                     </StackPanel>
                                 </Border>
 
-                                <Grid Grid.Row="1" Margin="18,13">
+                                <Grid x:Name="SessionToolbarGrid" Grid.Row="1" Margin="18,13">
+<Grid.RowDefinitions><RowDefinition x:Name="SessionSearchRow" Height="40"/><RowDefinition x:Name="SessionArchiveRow" Height="44"/></Grid.RowDefinitions>
                                     <Grid.ColumnDefinitions>
                                         <ColumnDefinition Width="*" />
                                         <ColumnDefinition Width="Auto" />
@@ -841,7 +847,20 @@
                                         <Button x:Name="ToggleSessionSelectionButton" Style="{StaticResource SecondaryButton}" Content="全选" Height="36" MinWidth="76" Padding="12,0" ToolTip="选择当前搜索结果中的全部对话；再次点击可全部取消" />
                                         <Button x:Name="DeleteSelectedSessionsButton" Style="{StaticResource SecondaryButton}" Content="删除所选" Height="36" MinWidth="106" Padding="12,0" Margin="8,0,0,0" Foreground="#A9443F" BorderBrush="#E4C7C4" IsEnabled="False" ToolTip="删除已勾选的对话；选中项目全部主对话后可同时处理项目目录" />
                                     </StackPanel>
-                                </Grid>
+
+<Grid Grid.Row="1" Grid.ColumnSpan="3" Margin="0,8,0,0">
+  <Grid.ColumnDefinitions><ColumnDefinition Width="*"/><ColumnDefinition Width="Auto"/></Grid.ColumnDefinitions>
+  <StackPanel Orientation="Horizontal">
+    <RadioButton x:Name="ArchiveAllRadio" GroupName="ArchiveState" Style="{StaticResource ImportModeSegment}" Content="全部" IsChecked="True" Height="30" MinWidth="60" Margin="0,0,5,0"/>
+    <RadioButton x:Name="ArchiveActiveRadio" GroupName="ArchiveState" Style="{StaticResource ImportModeSegment}" Content="未归档" Height="30" MinWidth="78" Margin="0,0,5,0"/>
+    <RadioButton x:Name="ArchiveDoneRadio" GroupName="ArchiveState" Style="{StaticResource ImportModeSegment}" Content="已归档" Height="30" MinWidth="78"/>
+  </StackPanel>
+  <StackPanel Grid.Column="1" Orientation="Horizontal">
+    <Button x:Name="ArchiveSelectedButton" Style="{StaticResource SecondaryButton}" Content="归档所选" Height="30" MinWidth="88" Padding="10,0"/>
+    <Button x:Name="UnarchiveSelectedButton" Style="{StaticResource SecondaryButton}" Content="取消归档" Height="30" MinWidth="88" Padding="10,0" Margin="8,0,0,0"/>
+  </StackPanel>
+</Grid>
+</Grid>
 
                                 <Grid Grid.Row="2" Margin="18,0,14,0">
                                     <ListBox x:Name="SessionList" Background="Transparent" BorderThickness="0" ItemContainerStyle="{StaticResource SessionItemStyle}" ScrollViewer.HorizontalScrollBarVisibility="Disabled" ScrollViewer.VerticalScrollBarVisibility="Auto" VirtualizingPanel.IsVirtualizing="True" VirtualizingPanel.VirtualizationMode="Recycling">

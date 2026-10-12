@@ -361,12 +361,15 @@ internal static class ConversationStorage
 				throw new InvalidOperationException("安全校验失败：不能删除系统、用户目录或包含这些目录的上级目录：\n" + fullPath);
 			}
 		}
-		string codexHome = Path.GetFullPath(CodexCatalog.ResolveCodexHome());
+		string codexHome = Path.GetFullPath(BackendContext.Home);
 		if (TextHelpers.IsWithin(fullPath, codexHome) || TextHelpers.IsWithin(codexHome, fullPath))
 		{
 			throw new InvalidOperationException("安全校验失败：项目路径与 Codex 配置目录重叠。");
 		}
 		string applicationDirectory = Path.GetFullPath(AppDomain.CurrentDomain.BaseDirectory);
+		string otherHome = Path.GetFullPath(BackendContext.IsDsh ? CodexCatalog.ResolveCodexHome() : DshService.Home);
+		if (TextHelpers.IsWithin(fullPath, otherHome) || TextHelpers.IsWithin(otherHome, fullPath))
+			throw new InvalidOperationException("安全校验失败：项目路径与另一数据源的配置目录重叠。");
 		if (TextHelpers.IsWithin(applicationDirectory, fullPath) || TextHelpers.IsWithin(fullPath, applicationDirectory))
 		{
 			throw new InvalidOperationException("安全校验失败：项目路径与当前工具目录重叠。请把工具移到其他位置后再处理该项目。");

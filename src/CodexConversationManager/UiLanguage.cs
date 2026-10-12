@@ -19,6 +19,7 @@ internal static class UiLanguage
 		{ "Codex 对话与项目管理器", "Codex Conversation Manager" },
 		{ "对话与项目管理器", "Conversation Manager" },
 		{ "本地运行", "Runs locally" },
+		{ "全部", "All" }, { "未归档", "Active" }, { "已归档", "Archived" }, { "归档所选", "Archive selected" }, { "取消归档", "Unarchive" }, { "数据目录", "Data folder" }, { "恢复中断操作", "Recover interrupted operation" },
 		{ "最小化到任务栏", "Minimize to taskbar" },
 		{ "关闭预览", "Close preview" },
 		{ "最小化", "Minimize" },
@@ -293,7 +294,20 @@ internal static class UiLanguage
 		}
 	}
 
-	public static string T(string text)
+	public static string T(string text) => Brand(TranslateOriginal(text));
+
+	private static string Brand(string text) => !BackendContext.IsDsh ? text : text?.Replace("Codex", "DeepSeek").Replace(".codexchat", ".dshchat").Replace(".codexproject", ".dshproject")
+        .Replace(" · 兼容旧版 .codexpack", "").Replace(" · Legacy .codexpack supported", "")
+        .Replace("C 盘 DeepSeek", "本机 DSH").Replace("DeepSeek on drive C", "local DSH")
+        .Replace("对话回 C 盘", "对话回 DSH 数据目录").Replace("会话仍导入 C 盘", "会话仍导入 DSH 数据目录")
+        .Replace("conversations to drive C", "conversations to DSH data")
+        .Replace("DeepSeek folder on drive C", "DSH data folder")
+        .Replace("把原始编号保存在会话中供下次识别", "把原始编号保存在 DSH 同源索引中供下次识别")
+        .Replace("本次操作会先通过 DeepSeek 官方删除接口更新任务目录，再处理本地会话文件与索引。", "本次操作会处理 DSH 本地会话目录、工作区索引与投影缓存。")
+        .Replace("The DeepSeek thread/delete protocol is applied first, followed by local file and index cleanup.", "This operation updates local DSH session folders, workspace indexes and projection caches.")
+        .Replace("each will receive its own recoverable trash copy", "they will be recoverable together with the parent batch");
+
+	private static string TranslateOriginal(string text)
 	{
 		if (!IsEnglish || string.IsNullOrEmpty(text))
 		{
@@ -335,13 +349,13 @@ internal static class UiLanguage
 		string xaml = File.ReadAllText(path, Encoding.UTF8);
 		if (!IsEnglish)
 		{
-			return xaml;
+			return Brand(xaml);
 		}
 		foreach (KeyValuePair<string, string> pair in AllMappings)
 		{
 			xaml = xaml.Replace(pair.Key, pair.Value);
 		}
-		return TranslatePatterns(xaml);
+		return Brand(TranslatePatterns(xaml));
 	}
 
 	private static string TranslatePatterns(string text)

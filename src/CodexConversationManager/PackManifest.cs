@@ -4,6 +4,8 @@ namespace CodexConversationManager;
 
 internal sealed class PackManifest
 {
+	public object native_sessions { get; set; }
+
 	public int schema { get; set; }
 
 	public string created_at { get; set; }

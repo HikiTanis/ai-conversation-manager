@@ -6,6 +6,28 @@ All notable changes are documented here. The project follows semantic versioning
 
 No unreleased changes are documented yet.
 
+## [1.1.0] - 2026-10-12
+
+### Added
+
+- Unified Codex / DeepSeek Harness provider switching in the original window, with remembered selection and isolated list/import state.
+- All / Active / Archived filters for both providers, plus native DSH archive/unarchive actions.
+- DSH workspace v2/session v4 JSONL and multi-frame Zstandard support, descendant deletion, batch trash/restore, permanent purge and interrupted transaction recovery.
+- DSH `.dshchat` / `.dshproject` backup and inspection, mapped import, lineage merge, independent copy and conversation rollback.
+- Synthetic Node storage/package tests and bilingual provider-switch, preview and backup regressions.
+
+### Changed
+
+- Organized provider adapters under `Providers` and `adapters/dsh`, and UI regressions under `tests/ui`; excluded the standalone prototype and developer artifacts.
+- Retained existing Codex engine and formal/legacy formats; rejected cross-provider packages and protected both data roots during project operations.
+- Updated portable assets, Node-enabled CI, bilingual documentation and v1.1.0 release notes.
+- Improved compact layout so the archive toolbar still leaves room for conversation cards; refresh the list after trash restoration.
+
+### Compatibility
+
+- Codex archive state is filterable; changing it still requires the Codex client. Codex `.jsonl.zst` remains metadata-only.
+- DSH targets Desktop 0.2.0-rc.2 with Node Zstandard support. Log reads/decoded output are limited to 128 MiB and previews to 2 million characters.
+- DSH real-session writes, restart and resumption are not yet verified end to end. Project-file restore is not fully rolled back by a later conversation import failure.
 ## [1.0.3] - 2026-09-01
 
 ### Fixed

@@ -172,13 +172,14 @@ function Add-LongConversationFixture {
 
 try {
     if (-not $NoBuild) {
-        & (Join-Path $repoRoot 'build.ps1') -Configuration Release
+        & (Join-Path $scriptRoot 'build.ps1') -Configuration Release
     }
     if (-not (Test-Path -LiteralPath $app)) {
         throw "Built application was not found: $app"
     }
 
     if (Test-Path -LiteralPath $artifactRoot) {
+        if (-not [IO.Path]::GetFullPath($artifactRoot).StartsWith(([IO.Path]::GetFullPath((Join-Path $repoRoot 'artifacts')).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar), [StringComparison]::OrdinalIgnoreCase)) { throw "Unsafe cleanup path: $artifactRoot" }
         Remove-Item -LiteralPath $artifactRoot -Recurse -Force
     }
     New-Item -ItemType Directory -Path $artifactRoot -Force | Out-Null
@@ -266,6 +267,7 @@ try {
 finally {
     $env:CODEX_HOME = $previousCodexHome
     if (Test-Path -LiteralPath $temporaryCodexHome) {
+        if (-not [IO.Path]::GetFullPath($temporaryCodexHome).StartsWith(([IO.Path]::GetFullPath(([IO.Path]::GetTempPath())).TrimEnd([IO.Path]::DirectorySeparatorChar) + [IO.Path]::DirectorySeparatorChar), [StringComparison]::OrdinalIgnoreCase)) { throw "Unsafe cleanup path: $temporaryCodexHome" }
         Remove-Item -LiteralPath $temporaryCodexHome -Recurse -Force
     }
 }

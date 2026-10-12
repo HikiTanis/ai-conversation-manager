@@ -7,7 +7,7 @@
     <RootNamespace>CodexConversationManager</RootNamespace>
     <GenerateAssemblyInfo>True</GenerateAssemblyInfo>
     <AssemblyTitle>Codex Conversation Manager</AssemblyTitle>
-    <Description>Local-first management, inspection, backup, migration, and cleanup for Codex conversations, subagents, and projects.</Description>
+    <Description>Local-first conversation and project management for Codex and DeepSeek Harness.</Description>
     <Product>Codex Conversation Manager</Product>
     <Version>$(CcmVersion)</Version>
     <AssemblyVersion>$(CcmVersion).0</AssemblyVersion>
@@ -15,6 +15,7 @@
     <InformationalVersion>$(CcmVersion)</InformationalVersion>
     <IncludeSourceRevisionInInformationalVersion>False</IncludeSourceRevisionInInformationalVersion>
     <OutputType>WinExe</OutputType>
+    <StartupObject>CodexConversationManager.Program</StartupObject>
     <UseWPF>True</UseWPF>
     <UseWindowsForms>True</UseWindowsForms>
     <TargetFramework>net48</TargetFramework>
@@ -22,14 +23,14 @@
     <AllowUnsafeBlocks>True</AllowUnsafeBlocks>
     <ApplicationIcon>assets\app-icon.ico</ApplicationIcon>
     <Deterministic>True</Deterministic>
-    <PlatformTarget>AnyCPU</PlatformTarget>
+    <PlatformTarget>x64</PlatformTarget>
     <Prefer32Bit>False</Prefer32Bit>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)' == 'Release'">
     <DebugType>portable</DebugType>
     <DebugSymbols>True</DebugSymbols>
-    <PathMap>$(MSBuildProjectDirectory)=/_/src</PathMap>
+    <PathMap>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)\..\..'))=/_/</PathMap>
   </PropertyGroup>
 
   <ItemGroup>
@@ -49,8 +50,15 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Resource Include="assets\app-icon.ico" />
+    <None Update="assets\app-icon.ico" CopyToOutputDirectory="PreserveNewest" />
     <Page Remove="CodexConversationManager.xaml" />
     <None Include="CodexConversationManager.xaml" CopyToOutputDirectory="PreserveNewest" />
+    <Page Remove="DialogTheme.xaml" />
+    <None Include="DialogTheme.xaml" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\adapters\dsh\backend.cjs" Link="backend.cjs" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="..\..\adapters\dsh\packages.cjs" Link="packages.cjs" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <ItemGroup>
+    <Compile Include="..\..\tests\ui\*.cs" Link="Tests\%(Filename)%(Extension)" />
   </ItemGroup>
 </Project>

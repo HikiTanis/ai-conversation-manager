@@ -25,6 +25,12 @@ These controls reduce risk but do not make an untrusted backup package safe. Use
 
 The Windows application is currently not Authenticode-signed. Official release assets include `SHA256SUMS.txt`; verify the downloaded ZIP as shown in the README before extraction. A matching hash detects an altered download but does not by itself prove publisher identity.
 
-The release package does not bundle or download a third-party migration executable. Inspection, backup, and import run in the application process. Deletion and supported legacy-sidebar repair require a compatible locally available Codex CLI executable. Codex CLI 0.148.0 or later is this project's supported compatibility baseline; using the latest release is recommended. The application can also discover compatible runtimes bundled with Codex Desktop or the VS Code extension.
+The release package does not bundle or download a third-party migration executable. Codex inspection, backup, and import run in the application process. Deletion and supported legacy-sidebar repair require a compatible locally available Codex CLI executable. Codex CLI 0.148.0 or later is this project's supported compatibility baseline; using the latest release is recommended. The application can also discover compatible runtimes bundled with Codex Desktop or the VS Code extension.
 
-Compressed `.jsonl.zst` sessions are currently limited to index-metadata discovery and are excluded from content preview, formal backup, and import.
+Compressed Codex `.jsonl.zst` sessions are currently limited to index-metadata discovery and are excluded from content preview, formal backup, and import.
+
+## DSH support
+
+DSH Desktop compatibility was checked against 0.2.0-rc.2 storage (workspace v2, session v4 JSONL and concatenated Zstd frames). DSH requires a locally available Node.js runtime with Zstd support (22.15+ or 24+). Adapters run in a local subprocess and use separate packages, trash, and transaction records. Close DSH Desktop before archive, deletion, import, or restoration. Synthetic tests do not establish compatibility with every future desktop version.
+
+Reports should name the selected provider, desktop version, Node.js version, and redacted error text. Never attach real DSH data or packages.
