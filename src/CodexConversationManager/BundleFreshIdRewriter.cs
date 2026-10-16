@@ -24,6 +24,7 @@ internal static class BundleFreshIdRewriter
 
 	private sealed class RewriteItem
 	{
+		public bool Compressed { get; set; }
 		public BundleSession Session { get; set; }
 
 		public string OldId { get; set; }
@@ -144,10 +145,6 @@ internal static class BundleFreshIdRewriter
 				HashSet<string> finalSessionPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 				foreach (BundleSession session in manifest.sessions)
 				{
-					if (session.compressed || (session.bundle_path ?? string.Empty).EndsWith(".zst", StringComparison.OrdinalIgnoreCase))
-					{
-						throw new InvalidDataException("对话使用 .zst 压缩格式，当前无法安全写入原始编号或重写父子编号：" + session.thread_id);
-					}
 					string oldId = session.thread_id;
 					string newId = oldId;
 					if (requestedIdMap != null && requestedIdMap.TryGetValue(oldId, out string mapped) && !string.IsNullOrWhiteSpace(mapped))
@@ -169,6 +166,7 @@ internal static class BundleFreshIdRewriter
 					string newBundlePath = string.Equals(oldId, newId, StringComparison.OrdinalIgnoreCase)
 						? oldBundlePath
 						: ReplaceIdInPath(oldBundlePath, oldId, newId);
+					newBundlePath = RolloutStorage.PlainPath(newBundlePath);
 					if (!finalSessionPaths.Add(newBundlePath))
 					{
 						throw new InvalidDataException("重编号后的多个会话将使用同一个文件：" + newBundlePath);
@@ -176,6 +174,7 @@ internal static class BundleFreshIdRewriter
 					itemsByPath.Add(oldBundlePath, new RewriteItem
 					{
 						Session = session,
+						Compressed = session.compressed || RolloutStorage.IsCompressed(oldBundlePath),
 						OldId = oldId,
 						NewId = newId,
 						OriginId = origin,
@@ -186,6 +185,7 @@ internal static class BundleFreshIdRewriter
 					session.origin_thread_id = origin;
 					session.thread_id = newId;
 					session.bundle_path = newBundlePath;
+					session.compressed = false;
 					if (!string.Equals(oldId, newId, StringComparison.OrdinalIgnoreCase))
 					{
 						session.original_path = ReplaceTextIgnoreCase(session.original_path, oldId, newId);
@@ -215,6 +215,7 @@ internal static class BundleFreshIdRewriter
 						RewriteItem item = null;
 						if (itemsByPath.TryGetValue(entryPath, out item))
 						{
+							data = RolloutStorage.DecodeBytes(data, item.Compressed);
 							data = RewriteSessionMetadata(data, idMap, item.OldId, item.NewId, item.OriginId);
 							destinationPath = item.NewBundlePath;
 							item.Session.size_bytes = data.LongLength;
@@ -361,13 +362,8 @@ internal static class BundleFreshIdRewriter
 			{
 				throw new InvalidDataException("对话包清单包含重复 Thread ID：" + session.thread_id);
 			}
-			if (session.compressed ||
-				(session.bundle_path ?? string.Empty).EndsWith(".zst", StringComparison.OrdinalIgnoreCase))
-			{
-				throw new InvalidDataException("对话使用 .zst 压缩格式，当前无法安全读取或重写父子编号：" + session.thread_id);
-			}
 			string sessionPath = NormalizeEntryPath(session.bundle_path, directory: false);
-			if (!sessionPath.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase))
+			if (!RolloutStorage.PlainPath(sessionPath).EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase))
 			{
 				throw new InvalidDataException("对话文件不是 JSONL：" + sessionPath);
 			}
@@ -400,7 +396,7 @@ internal static class BundleFreshIdRewriter
 			{
 				throw new InvalidDataException("对话包清单中的文件大小与实际内容不一致：" + sessionPath);
 			}
-			ValidateSessionIdentity(ReadFirstLine(sessionEntry, session.thread_id), session.thread_id);
+			ValidateSessionIdentity(ReadFirstLine(sessionEntry, session.thread_id, session.compressed), session.thread_id);
 			session.bundle_path = sessionPath;
 		}
 
@@ -436,7 +432,7 @@ internal static class BundleFreshIdRewriter
 		foreach (BundleSession session in manifest.sessions)
 		{
 			Dictionary<string, object> payload = ReadPayload(
-				ReadFirstLine(entries[session.bundle_path], session.thread_id),
+				ReadFirstLine(entries[session.bundle_path], session.thread_id, session.compressed),
 				session.thread_id);
 			string embeddedOrigin = ConversationLineage.ResolveOriginThreadId(payload, session.thread_id);
 			string origin = !string.IsNullOrWhiteSpace(session.origin_thread_id)
@@ -561,7 +557,7 @@ internal static class BundleFreshIdRewriter
 			throw new InvalidDataException("会话文件缺少首行 session_meta：" + oldId);
 		}
 		int lineEnd = newline > 0 && data[newline - 1] == 13 ? newline - 1 : newline;
-		string firstLine = Encoding.UTF8.GetString(data, 0, lineEnd);
+		string firstLine = Encoding.UTF8.GetString(data, 0, lineEnd).TrimStart('\uFEFF');
 		Dictionary<string, object> root = JsonSerialization.NewSerializer().DeserializeObject(firstLine) as Dictionary<string, object>;
 		if (root == null || !root.TryGetValue("payload", out object value) || !(value is Dictionary<string, object> payload))
 		{
@@ -751,9 +747,9 @@ internal static class BundleFreshIdRewriter
 			entry.FullName);
 	}
 
-	private static byte[] ReadFirstLine(ZipArchiveEntry entry, string threadId)
+	private static byte[] ReadFirstLine(ZipArchiveEntry entry, string threadId, bool compressed)
 	{
-		using Stream input = entry.Open();
+		using Stream input = RolloutStorage.Decode(entry.Open(), compressed || RolloutStorage.IsCompressed(entry.FullName));
 		using MemoryStream line = new MemoryStream();
 		bool foundNewline = false;
 		while (line.Length <= NativeBundleImporter.MaximumMetadataBytes)

@@ -11,6 +11,6 @@ Describe the user-visible change and why it is needed.
 
 ## Verification
 
-- [ ] `.\scripts\build.ps1`
-- [ ] `.\scripts\test.ps1 -NoBuild`
+- [ ] `.\scripts\package.ps1 -SkipUiTests`
+- [ ] Retained WPF tests when relevant: `.\scripts\test.ps1 -NoBuild`
 - [ ] Relevant manual flow checked with synthetic data

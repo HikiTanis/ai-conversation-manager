@@ -19,6 +19,8 @@ internal static class Program
 	[STAThread]
 	private static int Main(string[] args)
 	{
+		if (args.Length == 1 && args[0] == "--desktop-read") return DesktopReadBridge.Run();
+		if (args.Length == 1 && args[0] == "--desktop-operation") return DesktopReadBridge.Run(true);
 		BackendContext.Initialize(args);
 		if (args.Contains("--dsh-ui-test")) return DshUiTests.Run(args.Select(a => a == "--dsh-ui-test" ? "--ui-test" : a).ToArray());
 		if (args.Contains("--provider-test")) return ProviderUiTests.Run(args);
@@ -843,38 +845,7 @@ internal static class Program
 			string text7 = Path.Combine(text, "original.codexbundle");
 			string text8 = Path.Combine(text, "fresh.codexbundle");
 			ExactBundleWriter.CreateSingleSessionBundle(session, text7);
-			string text9 = Path.Combine(text, "compressed.codexbundle");
-			using (ZipArchive zipArchive = ZipFile.Open(text9, ZipArchiveMode.Create))
-			{
-				ZipArchiveEntry zipArchiveEntry = zipArchive.CreateEntry("manifest.json");
-				BundleManifest bundleManifest = new BundleManifest();
-				bundleManifest.format_version = "1";
-				bundleManifest.sessions = new List<BundleSession>
-				{
-					new BundleSession
-					{
-						thread_id = testThreadId,
-						bundle_path = "sessions/test.jsonl.zst",
-						compressed = true
-					}
-				};
-				BundleManifest obj4 = bundleManifest;
-				using StreamWriter streamWriter = new StreamWriter(zipArchiveEntry.Open(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-				streamWriter.Write(javaScriptSerializer.Serialize(obj4));
-			}
-			bool flag = false;
-			try
-			{
-				TargetedThreadIndexer.ValidateBundles(new string[1] { text9 });
-			}
-			catch (InvalidDataException ex)
-			{
-				flag = ex.Message.IndexOf(".zst", StringComparison.OrdinalIgnoreCase) >= 0;
-			}
-			if (!flag)
-			{
-				throw new InvalidOperationException("compressed bundle preflight test failed");
-			}
+			ZstdRolloutSelfTest.Run(Path.Combine(text, "zstd-selftest"));
 			string newProject = Path.Combine(text, "new-project");
 			Directory.CreateDirectory(newProject);
 			Dictionary<string, string> dictionary4 = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -1708,7 +1679,7 @@ internal static class Program
 			{
 				UiLanguage.Initialize(originalLanguageCode);
 			}
-			return "ImportModes=origin-merge+independent-copy · SamePathCwd=no-op · FormalBackup=.codexchat+.codexproject+legacy · NativeTxn=rollback+commit+delete · LegacyTxnSnapshot=trash-compatibility · Lineage=origin-persist+project-scope+parent-child+fresh-every-time+ambiguity-guard+checksum-guard+outer-archive-guards · IndependentCopy=retained+delete-isolated · TargetedIndex=insert+update+two-project-cwd+native-path+visibility · HistoryMode=legacy+paginated+bidirectional-update+ordinal-gap-guard · ImportRollback=planned-new-files-only+unrelated-preserved+sqlite-compensation+commit-cleanup-failure-safe · RuntimeSelection=cli-version-probe+desktop-install-discovery · DesktopProjectState=existing-remap+create+multi-project+backup+verify · BackupPrewrite=OK · BackfillUnchanged=complete · PendingRunningGuard=OK · ZstdPreflight=OK · Preview=2 messages · Trash=copy+official-delete+index-remove+desktop-catalog-remove+list+index-restore+purge+descendant-staging · PermanentDelete=official-delete+index-remove+desktop-catalog-remove+descendant-cascade · OfficialDeleteRefusal=preserves-local-data · StaleSidebar=current+log-confirmed-legacy+official-repair+ledger+live-descendant-guard+orphan-subagent-visible+exact-location+desktop-catalog-remove+desktop-cache-invalidation+completed-repair-catchup · ProjectGuard+Permanent=OK · ProjectPayload=schema5+two-targets+target-guard+combined-pack+create+inspect+restore+skip+backup+traversal-guard · EnglishCriticalFlows=no-CJK · PreviewLayout=auto-fit+fixed-insets+full-width+complete-scroll-end";
+			return "ImportModes=origin-merge+independent-copy · SamePathCwd=no-op · FormalBackup=.codexchat+.codexproject+legacy · NativeTxn=rollback+commit+delete · LegacyTxnSnapshot=trash-compatibility · Lineage=origin-persist+project-scope+parent-child+fresh-every-time+ambiguity-guard+checksum-guard+outer-archive-guards · IndependentCopy=retained+delete-isolated · TargetedIndex=insert+update+two-project-cwd+native-path+visibility · HistoryMode=legacy+paginated+bidirectional-update+ordinal-gap-guard · ImportRollback=planned-new-files-only+unrelated-preserved+sqlite-compensation+commit-cleanup-failure-safe · RuntimeSelection=cli-version-probe+desktop-install-discovery · DesktopProjectState=existing-remap+create+multi-project+backup+verify · BackupPrewrite=OK · BackfillUnchanged=complete · PendingRunningGuard=OK · Zstd=preview+backup+compressed-bundle+merge+rewrite+rollback+corruption · Preview=2 messages · Trash=copy+official-delete+index-remove+desktop-catalog-remove+list+index-restore+purge+descendant-staging · PermanentDelete=official-delete+index-remove+desktop-catalog-remove+descendant-cascade · OfficialDeleteRefusal=preserves-local-data · StaleSidebar=current+log-confirmed-legacy+official-repair+ledger+live-descendant-guard+orphan-subagent-visible+exact-location+desktop-catalog-remove+desktop-cache-invalidation+completed-repair-catchup · ProjectGuard+Permanent=OK · ProjectPayload=schema5+two-targets+target-guard+combined-pack+create+inspect+restore+skip+backup+traversal-guard · EnglishCriticalFlows=no-CJK · PreviewLayout=auto-fit+fixed-insets+full-width+complete-scroll-end";
 		}
 		finally
 		{

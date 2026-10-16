@@ -25,13 +25,8 @@ internal static class ConversationReader
 		conversationReadResult.Messages = new List<ConversationMessage>();
 		conversationReadResult.SessionPath = text;
 		ConversationReadResult conversationReadResult2 = conversationReadResult;
-		if (text.EndsWith(".zst", StringComparison.OrdinalIgnoreCase))
-		{
-			conversationReadResult2.Messages.Add(Notice(UiLanguage.T("该会话使用 zstd 压缩，当前版本可读取索引信息，但暂不支持预览、备份或迁移导入。")));
-			return conversationReadResult2;
-		}
 		JavaScriptSerializer javaScriptSerializer = JsonSerialization.NewSerializer();
-		using (FileStream stream = new FileStream(text, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+		using (Stream stream = RolloutStorage.OpenRead(text))
 		{
 			foreach (Utf8LineRecord line in ReadUtf8Lines(stream))
 			{
@@ -52,7 +47,8 @@ internal static class ConversationReader
 					conversationMessage.RoleLabel = (isUser ? UiLanguage.T("你") : "Codex");
 					conversationMessage.DisplayTime = displayTime;
 					conversationMessage.IsUser = isUser;
-					conversationMessage.SetDeferredText(text, line.Offset, line.ByteLength);
+					if (RolloutStorage.IsCompressed(text)) conversationMessage.Text = messageText;
+					else conversationMessage.SetDeferredText(text, line.Offset, line.ByteLength);
 					conversationReadResult2.Messages.Add(conversationMessage);
 				}
 				catch
@@ -140,7 +136,7 @@ internal static class ConversationReader
 		return true;
 	}
 
-	private static IEnumerable<Utf8LineRecord> ReadUtf8Lines(FileStream stream)
+	private static IEnumerable<Utf8LineRecord> ReadUtf8Lines(Stream stream)
 	{
 		byte[] readBuffer = new byte[65536];
 		using (MemoryStream lineBuffer = new MemoryStream())
@@ -218,7 +214,7 @@ internal static class ConversationReader
 
 	public static string ReadTitleCandidate(string path)
 	{
-		if (string.IsNullOrWhiteSpace(path) || !File.Exists(path) || path.EndsWith(".zst", StringComparison.OrdinalIgnoreCase))
+		if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
 		{
 			return string.Empty;
 		}
@@ -227,7 +223,7 @@ internal static class ConversationReader
 		int characters = 0;
 		try
 		{
-			using FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+			using Stream stream = RolloutStorage.OpenRead(path);
 			using StreamReader reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, 8192);
 			string line;
 			while (lines < 240 && characters < 2000000 && (line = reader.ReadLine()) != null)

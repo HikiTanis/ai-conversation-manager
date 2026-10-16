@@ -236,7 +236,7 @@ internal static class NativeBundleImporter
 		}
 		foreach (PlannedImport plan in plans)
 		{
-			long destinationSize = plan.Status == NativeBundleImportStatus.SkippedIdentical ||
+			long destinationSize = !options.DryRun || plan.Status == NativeBundleImportStatus.SkippedIdentical ||
 				plan.Status == NativeBundleImportStatus.SkippedLocalAhead
 				? SafeFileLength(plan.DestinationPath)
 				: new FileInfo(plan.Source.StagedPath).Length;
@@ -323,6 +323,16 @@ internal static class NativeBundleImporter
 				if (session.size_bytes != entry.Length)
 				{
 					throw new InvalidDataException("对话包清单中的文件大小与实际内容不一致：" + entryPath);
+				}
+				if (session.compressed || RolloutStorage.IsCompressed(entryPath))
+				{
+					string decodedPath = rawPath + ".decoded";
+					using (Stream decoded = RolloutStorage.Decode(File.OpenRead(rawPath), true))
+					using (Stream output = File.Create(decodedPath)) decoded.CopyTo(output);
+					File.Delete(rawPath);
+					File.Move(decodedPath, rawPath);
+					session.bundle_path = RolloutStorage.PlainPath(session.bundle_path);
+					session.compressed = false;
 				}
 				string stagedPath = Path.Combine(result.StageRoot, index.ToString("D5", CultureInfo.InvariantCulture) + ".jsonl");
 				bool cwdChanged = ValidateAndRewriteSessionMeta(
@@ -567,16 +577,8 @@ internal static class NativeBundleImporter
 			throw new InvalidDataException(
 				"对话包清单包含重复 Thread ID：" + session.thread_id);
 		}
-		if (session.compressed ||
-			(session.bundle_path ?? string.Empty).EndsWith(
-				".zst",
-				StringComparison.OrdinalIgnoreCase))
-		{
-			throw new InvalidDataException(
-				"原生导入暂不支持 .zst 会话：" + session.thread_id);
-		}
 		string path = NormalizeEntryPath(session.bundle_path, directory: false);
-		if (!path.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase))
+		if (!RolloutStorage.PlainPath(path).EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase))
 		{
 			throw new InvalidDataException("对话文件不是 JSONL：" + path);
 		}
@@ -820,12 +822,6 @@ internal static class NativeBundleImporter
 			{
 				status = NativeBundleImportStatus.Created;
 			}
-			else if (destination.EndsWith(".jsonl.zst", StringComparison.OrdinalIgnoreCase))
-			{
-				throw new InvalidDataException(
-					"本机已存在相同 Thread ID 的 .zst 会话，当前无法安全合并或替换：" +
-					source.ManifestSession.thread_id);
-			}
 			else if (mode == NativeBundleImportMode.Replace)
 			{
 				status = FilesHaveSameContent(destination, source.StagedPath)
@@ -885,9 +881,7 @@ internal static class NativeBundleImporter
 			}
 			foreach (string path in EnumerateSessionFiles(root))
 			{
-				string embedded = path.EndsWith(".jsonl.zst", StringComparison.OrdinalIgnoreCase)
-					? IdFromFileName(path)
-					: ReadThreadId(path);
+				string embedded = ReadThreadId(path);
 				if (wanted.Contains(embedded))
 				{
 					result[embedded].Add(Path.GetFullPath(path));
@@ -1166,11 +1160,7 @@ internal static class NativeBundleImporter
 	private static StreamReader OpenJsonl(string path)
 	{
 		return new StreamReader(
-			new FileStream(
-				path,
-				FileMode.Open,
-				FileAccess.Read,
-				FileShare.ReadWrite | FileShare.Delete),
+			RolloutStorage.OpenRead(path),
 			new UTF8Encoding(
 				encoderShouldEmitUTF8Identifier: false,
 				throwOnInvalidBytes: true),
@@ -1180,50 +1170,12 @@ internal static class NativeBundleImporter
 
 	private static bool FilesHaveSameContent(string leftPath, string rightPath)
 	{
-		FileInfo left = new FileInfo(leftPath);
-		FileInfo right = new FileInfo(rightPath);
-		if (left.Length != right.Length)
-		{
-			return false;
-		}
-		using FileStream leftStream = new FileStream(
-			leftPath,
-			FileMode.Open,
-			FileAccess.Read,
-			FileShare.ReadWrite | FileShare.Delete);
-		using FileStream rightStream = new FileStream(
-			rightPath,
-			FileMode.Open,
-			FileAccess.Read,
-			FileShare.Read);
-		byte[] leftBuffer = new byte[81920];
-		byte[] rightBuffer = new byte[81920];
-		while (true)
-		{
-			int leftRead = leftStream.Read(
-				leftBuffer,
-				0,
-				leftBuffer.Length);
-			int rightRead = rightStream.Read(
-				rightBuffer,
-				0,
-				rightBuffer.Length);
-			if (leftRead != rightRead)
-			{
-				return false;
-			}
-			if (leftRead == 0)
-			{
-				return true;
-			}
-			for (int index = 0; index < leftRead; index++)
-			{
-				if (leftBuffer[index] != rightBuffer[index])
-				{
-					return false;
-				}
-			}
-		}
+		if (!RolloutStorage.IsCompressed(leftPath) && !RolloutStorage.IsCompressed(rightPath) &&
+			new FileInfo(leftPath).Length != new FileInfo(rightPath).Length) return false;
+		using Stream left = RolloutStorage.OpenRead(leftPath);
+		using Stream right = RolloutStorage.OpenRead(rightPath);
+		using SHA256 sha = SHA256.Create();
+		return sha.ComputeHash(left).SequenceEqual(sha.ComputeHash(right));
 	}
 
 	private static void ApplyPlan(List<PlannedImport> plans)
@@ -1331,7 +1283,8 @@ internal static class NativeBundleImporter
 			".tmp";
 		try
 		{
-			File.Copy(source, temporary, overwrite: false);
+			if (RolloutStorage.IsCompressed(destination)) RolloutStorage.EncodeFile(source, temporary);
+			else File.Copy(source, temporary, overwrite: false);
 			if (overwrite)
 			{
 				File.Replace(
@@ -1658,7 +1611,7 @@ internal static class NativeBundleImporter
 	}
 
 	private static void ReadFirstLine(
-		FileStream input,
+		Stream input,
 		out byte[] lineBytes,
 		out byte[] newlineBytes,
 		out long restOffset)
@@ -1704,11 +1657,7 @@ internal static class NativeBundleImporter
 	{
 		try
 		{
-			using FileStream input = new FileStream(
-				path,
-				FileMode.Open,
-				FileAccess.Read,
-				FileShare.ReadWrite | FileShare.Delete);
+			using Stream input = RolloutStorage.OpenRead(path);
 			ReadFirstLine(input, out byte[] line, out _, out _);
 			Dictionary<string, object> root =
 				JsonSerialization.NewSerializer().DeserializeObject(DecodeUtf8(line))

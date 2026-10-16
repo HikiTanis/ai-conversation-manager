@@ -1,0 +1,34 @@
+:root {
+  --color-text: #182230;
+  --color-muted: #667085;
+  --color-canvas: #f5f6f8;
+  --color-surface: #fff;
+  --color-subtle: #f8f9fb;
+  --color-border: #e7eaee;
+  --color-control-border: #d8dee6;
+  --color-accent: #079875;
+  --color-accent-text: #00876a;
+  --color-accent-soft: #eaf7f2;
+  --color-accent-border: #c0eadc;
+  --color-danger: #cc4a45;
+  --color-danger-soft: #fff1ef;
+  --radius-control: 8px;
+  --radius-option: 8px;
+  --radius-card: 12px;
+  --radius-item: 8px;
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 18px;
+  --space-xl: 24px;
+  --color-accent-hover: #078766;
+  --color-hover: #f1f4f7;
+  --color-navigation: #f5f6f8;
+  --color-badge: #eef1f5;
+  --color-warning-soft: #fff9e9;
+  --color-overlay: #18223050;
+  --shadow-dialog: 0 24px 80px #18223026, 0 4px 16px #1822300d;
+  --shadow-menu: 0 8px 28px #1822301a, 0 2px 6px #1822300a;
+  --font-body: "Segoe UI", "Microsoft YaHei", sans-serif;
+  --font-mono: Consolas, monospace;
+}

@@ -85,20 +85,10 @@ internal static class NativeSessionCatalog
 		}
 		DbThread indexedByPath = null;
 		indexByPath.TryGetValue(NormalizePath(fullPath), out indexedByPath);
-		bool compressed = fullPath.EndsWith(".jsonl.zst", StringComparison.OrdinalIgnoreCase);
-		if (compressed)
-		{
-			string id = IdFromFileName(fullPath);
-			DbThread compressedIndex = ResolveIndexedThread(indexedByPath, id, indexById);
-			id = First(id, compressedIndex == null ? null : compressedIndex.Id);
-			return CreateFallback(fullPath, root, archived, compressedIndex, id, true);
-		}
-
 		JavaScriptSerializer serializer = JsonSerialization.NewSerializer();
 		Dictionary<string, object> payload;
 		string preview;
-		using (FileStream stream = new FileStream(fullPath, FileMode.Open, FileAccess.Read,
-			FileShare.ReadWrite | FileShare.Delete, 65536, FileOptions.SequentialScan))
+		using (Stream stream = RolloutStorage.OpenRead(fullPath))
 		using (StreamReader reader = new StreamReader(stream, Encoding.UTF8, true, 65536))
 		{
 			string firstLine = reader.ReadLine();

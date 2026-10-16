@@ -1,32 +1,28 @@
 # Contributing
 
-Contributions are welcome. Keep changes focused, preserve the local-first behavior, and avoid using real Codex history in tests or screenshots.
+Use synthetic histories and keep changes focused. The default README is Chinese; update README.en.md and release notes when behavior changes.
 
-## Development workflow
+## Development
 
-1. Use 64-bit Windows 10/11 with .NET SDK 8.x, Node.js 24+, and PowerShell 5.1 or later. The project restores the pinned `Microsoft.NETFramework.ReferenceAssemblies.net48` NuGet package, so a separately installed .NET Framework 4.8 Targeting Pack is not required.
-2. Fork the repository and create a short-lived branch.
-3. From the repository root, run the complete build, test, and packaging workflow:
+Windows x64, Node.js 24, .NET SDK 8, Rust stable MSVC and Microsoft C++ Build Tools are required.
 
-   ```powershell
-   .\scripts\package.ps1
-   ```
+```powershell
+.\scripts\package.ps1 -SkipUiTests
+```
 
-   This command reads the authoritative `VERSION` file, restores pinned build packages, builds the application, runs all automated tests, and creates the release ZIP and checksum under `release/`. Codex uses the built-in native engine, while DSH uses `adapters/dsh/` in a local Node.js subprocess; no third-party migration executable is downloaded or packaged.
+This restores dependencies, builds the React/Tauri desktop and compatibility engine, runs frontend, Rust, bridge, bilingual engine and DSH regressions, and verifies installer/portable artifacts under release/v<version>/. Omit SkipUiTests on an interactive Windows desktop when testing retained WPF windows and render behavior.
 
-   GitHub-hosted Windows runners call the same packaging script with `-SkipUiTests` because they do not provide the interactive desktop required by the native-window hit-test and WPF screenshot regressions. Run the command above without that switch on a normal Windows desktop before release; the bilingual functional self-tests still run in CI.
-4. Describe behavior changes, safety implications, and manual checks in the pull request.
+See desktop/README.md and docs/ARCHITECTURE.md. VERSION, npm manifests, Cargo manifest/lock and Tauri config must agree. Release tags must match VERSION.
 
-## Rules for fixtures and bug reports
+## Contribution rules
 
-- Use synthetic Codex and DSH homes and invented Thread IDs.
-- Do not commit or attach real conversation bundles, JSONL files, SQLite databases, usernames, absolute user paths, prompts, source code, or secrets.
-- Add both Chinese and English text for any new user-facing message.
-- Keep permanent deletion behind a clear confirmation and preserve existing path-boundary checks.
-- Do not silently change backup formats. Document schema changes and maintain import compatibility when practical.
-- Keep the shared WPF layout and provider routing in `Providers/`; add DSH regressions under `tests/dsh/` and shared UI checks under `tests/ui/`. See `docs/ARCHITECTURE.md`.
-- DSH uses independent `.dshchat` and `.dshproject` packages; never route them through the Codex importer.
-- Keep `.codexchat` and `.codexproject` as the formal output formats. `.codexpack` and `.codexbundle` are legacy import-only formats.
-- Preserve the current Codex `.jsonl.zst` boundary unless the implementation and tests are updated together: index metadata may be shown, but content preview, formal backup, and import are unsupported.
+- Keep frontend changes in desktop/src, native commands in desktop/src-tauri, and storage compatibility in the C#/Node engines.
+- Use invented IDs and isolated temporary homes. Do not commit real conversations, bundles, SQLite databases, absolute personal paths, secrets or screenshots of private data.
+- Include Chinese and English for user-facing text.
+- Preserve path boundaries, deletion scope review, stale-scope checks, operation locks and rollback behavior.
+- Keep Codex and DSH importers and formats isolated. Codex writes .codexchat/.codexproject and accepts legacy .codexpack/.codexbundle; DSH uses .dshchat/.dshproject.
+- Preserve .jsonl.zst reading, complete decoded backup, lineage rewriting and byte-preserving rollback tests.
+- Do not commit node_modules, engine outputs, target, dist, runtime caches or release binaries. Distribute binaries through GitHub Releases.
+- Describe changed behavior and actual validation in the PR. Retain known compatibility limits unless supported by new evidence.
 
-By contributing, you agree that your contribution is licensed under this repository's MIT License.
+Contributions are licensed under the repository's MIT license.

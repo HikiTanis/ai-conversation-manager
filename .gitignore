@@ -36,3 +36,12 @@ Desktop.ini
 tests/dsh/.tmp/
 *.dshchat
 *.dshproject
+
+# Desktop build and browser verification artifacts
+node_modules/
+desktop/dist/
+desktop/src-tauri/target/
+desktop/src-tauri/gen/
+desktop/src-tauri/engine/
+output/playwright/
+.playwright-cli/

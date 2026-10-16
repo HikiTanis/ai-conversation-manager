@@ -6,9 +6,9 @@
     <AssemblyName>CodexConversationManager</AssemblyName>
     <RootNamespace>CodexConversationManager</RootNamespace>
     <GenerateAssemblyInfo>True</GenerateAssemblyInfo>
-    <AssemblyTitle>Codex Conversation Manager</AssemblyTitle>
+    <AssemblyTitle>AI Conversation Manager</AssemblyTitle>
     <Description>Local-first conversation and project management for Codex and DeepSeek Harness.</Description>
-    <Product>Codex Conversation Manager</Product>
+    <Product>AI Conversation Manager</Product>
     <Version>$(CcmVersion)</Version>
     <AssemblyVersion>$(CcmVersion).0</AssemblyVersion>
     <FileVersion>$(CcmVersion).0</FileVersion>
@@ -34,6 +34,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="ZstdSharp.Port" Version="0.8.8" />
     <PackageReference Include="Microsoft.NETFramework.ReferenceAssemblies.net48" Version="1.0.3" PrivateAssets="All" />
   </ItemGroup>
 
@@ -50,6 +51,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Include="..\..\THIRD-PARTY-NOTICES.txt" Link="THIRD-PARTY-NOTICES.txt" CopyToOutputDirectory="PreserveNewest" />
     <None Update="assets\app-icon.ico" CopyToOutputDirectory="PreserveNewest" />
     <Page Remove="CodexConversationManager.xaml" />
     <None Include="CodexConversationManager.xaml" CopyToOutputDirectory="PreserveNewest" />

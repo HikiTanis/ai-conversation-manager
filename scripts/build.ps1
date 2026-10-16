@@ -19,6 +19,22 @@ if ($sdks) {
     $refs = @('System.dll','System.Core.dll','System.Web.dll','System.Web.Extensions.dll','System.Xaml.dll','System.Windows.Forms.dll','System.IO.Compression.dll','System.IO.Compression.FileSystem.dll','Microsoft.VisualBasic.dll','WPF/WindowsBase.dll','WPF/PresentationCore.dll','WPF/PresentationFramework.dll')
     $arguments = @('/nologo','/target:winexe','/platform:x64','/langversion:12','/unsafe+','/optimize+','/utf8output','/main:CodexConversationManager.Program',"/win32icon:$source/assets/app-icon.ico","/out:$output/CodexConversationManager.exe")
     $arguments += $refs | ForEach-Object { '/reference:' + (Join-Path $framework $_) }
+    # The compiler-only path uses the same pinned packages as the SDK build.
+    $packageCache = if ($env:NUGET_PACKAGES) { $env:NUGET_PACKAGES } else { Join-Path $repoRoot '.tools/nuget' }
+    $packageLibraries = @(
+        'zstdsharp.port/0.8.8/lib/net462/ZstdSharp.dll',
+        'system.memory/4.6.0/lib/net462/System.Memory.dll',
+        'system.buffers/4.6.0/lib/net462/System.Buffers.dll',
+        'system.numerics.vectors/4.6.0/lib/net462/System.Numerics.Vectors.dll',
+        'system.runtime.compilerservices.unsafe/6.1.0/lib/net462/System.Runtime.CompilerServices.Unsafe.dll',
+        'system.threading.tasks.extensions/4.5.4/lib/net461/System.Threading.Tasks.Extensions.dll'
+    )
+    foreach ($library in $packageLibraries) {
+        $libraryPath = Join-Path $packageCache $library
+        if (!(Test-Path -LiteralPath $libraryPath)) { throw "Missing dependency $library. Use the .NET SDK to restore packages before a compiler-only build." }
+        $arguments += '/reference:' + $libraryPath
+        Copy-Item -LiteralPath $libraryPath -Destination $output -Force
+    }
     $arguments += Get-ChildItem -LiteralPath $source -Filter '*.cs' | Select-Object -ExpandProperty FullName
     $arguments += Get-ChildItem -LiteralPath (Join-Path $source 'Providers') -Filter '*.cs' -Recurse | Select-Object -ExpandProperty FullName
     $arguments += Get-ChildItem -LiteralPath (Join-Path $repoRoot 'tests/ui') -Filter '*.cs' | Select-Object -ExpandProperty FullName
@@ -32,5 +48,6 @@ if ($sdks) {
     Copy-Item -LiteralPath "$source/CodexConversationManager.xaml","$source/DialogTheme.xaml","$repoRoot/adapters/dsh/backend.cjs","$repoRoot/adapters/dsh/packages.cjs" -Destination $output -Force
     Copy-Item -LiteralPath "$source/assets" -Destination $output -Recurse -Force
     Copy-Item -LiteralPath "$source/App.config" -Destination "$output/CodexConversationManager.exe.config" -Force
+    Copy-Item -LiteralPath "$repoRoot/THIRD-PARTY-NOTICES.txt" -Destination $output -Force
 }
 Write-Host "Built: $source/bin/$Configuration/net48/CodexConversationManager.exe"

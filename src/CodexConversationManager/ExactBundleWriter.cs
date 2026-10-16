@@ -55,7 +55,7 @@ internal static class ExactBundleWriter
 				throw new InvalidDataException("所选对话缺少 Thread ID，已取消备份。");
 			}
 			string sourcePath = ResolveSourcePath(candidate);
-			RejectCompressedSource(sourcePath);
+			ValidateSourceFormat(sourcePath);
 			ValidateFileNameThreadId(sourcePath, candidate.ThreadId);
 			string normalizedSource = NormalizePath(sourcePath);
 			if (string.Equals(normalizedSource, NormalizePath(fullOutputPath), StringComparison.OrdinalIgnoreCase))
@@ -96,7 +96,13 @@ internal static class ExactBundleWriter
 				progress?.Invoke(index, sessions.Count, session);
 				string sourcePath = sourceById[session.ThreadId];
 				string snapshotPath = Path.Combine(snapshotDirectory, index.ToString("D4", CultureInfo.InvariantCulture) + "-" + session.ThreadId + ".jsonl");
-				CopyConsistentSnapshot(sourcePath, snapshotPath);
+				if (RolloutStorage.IsCompressed(sourcePath))
+				{
+					string compressedSnapshot = snapshotPath + ".zst";
+					CopyConsistentSnapshot(sourcePath, compressedSnapshot);
+					RolloutStorage.DecodeFile(compressedSnapshot, snapshotPath);
+				}
+				else CopyConsistentSnapshot(sourcePath, snapshotPath);
 				ValidateEmbeddedThreadId(snapshotPath, session.ThreadId, sourcePath);
 
 				string relativePath = session.RelativePath;
@@ -104,12 +110,12 @@ internal static class ExactBundleWriter
 				{
 					relativePath = DeriveRelativePath(sourcePath, codexHome);
 				}
-				relativePath = NormalizeBundleRelativePath(relativePath);
+				relativePath = NormalizeBundleRelativePath(RolloutStorage.PlainPath(relativePath));
 				string prefix = session.Archived ? "archived_sessions/" : "sessions/";
 				string bundlePath = prefix + relativePath;
 				if (bundleSources.ContainsKey(bundlePath))
 				{
-					bundlePath = prefix + DateTime.Now.ToString("yyyy/MM/dd/", CultureInfo.InvariantCulture) + session.ThreadId + "-" + Path.GetFileName(sourcePath);
+					bundlePath = prefix + DateTime.Now.ToString("yyyy/MM/dd/", CultureInfo.InvariantCulture) + session.ThreadId + "-" + Path.GetFileName(RolloutStorage.PlainPath(sourcePath));
 				}
 				if (bundleSources.ContainsKey(bundlePath))
 				{
@@ -207,16 +213,10 @@ internal static class ExactBundleWriter
 		throw new FileNotFoundException("找不到该对话对应的 rollout 文件。", stripped);
 	}
 
-	private static void RejectCompressedSource(string sourcePath)
+	private static void ValidateSourceFormat(string sourcePath)
 	{
-		if (sourcePath.EndsWith(".zst", StringComparison.OrdinalIgnoreCase))
-		{
-			throw new NotSupportedException("暂不支持备份 .zst 压缩会话；为避免生成无法还原的迁移包，本次操作已取消：" + TextHelpers.StripExtendedPrefix(sourcePath));
-		}
-		if (!sourcePath.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase))
-		{
-			throw new InvalidDataException("rollout 文件必须是普通 .jsonl：" + TextHelpers.StripExtendedPrefix(sourcePath));
-		}
+		if (!RolloutStorage.PlainPath(sourcePath).EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase))
+			throw new InvalidDataException("rollout must be .jsonl or .jsonl.zst: " + sourcePath);
 	}
 
 	private static void ValidateFileNameThreadId(string sourcePath, string expectedThreadId)

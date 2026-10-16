@@ -1,0 +1,37 @@
+{
+  "name": "conversation-manager-desktop",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc --noEmit && vite build",
+    "test": "vitest run src",
+    "tauri": "tauri",
+    "desktop:dev": "tauri dev",
+    "desktop:build": "tauri build --no-bundle",
+    "prepare:engine": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/prepare-engine.ps1",
+    "test:bridge": "node --test --test-concurrency=1 tests/bridge.test.cjs tests/operations.test.cjs",
+    "format:check": "prettier --check \"src/**/*.{ts,tsx,css}\""
+  },
+  "dependencies": {
+    "@tanstack/react-virtual": "3.14.20",
+    "@tauri-apps/api": "2.12.4",
+    "@tauri-apps/plugin-dialog": "^2.8.3",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "2.12.3",
+    "@testing-library/react": "^16.0.0",
+    "@testing-library/user-event": "^14.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "jsdom": "^28.0.0",
+    "prettier": "3.9.10",
+    "typescript": "7.0.2",
+    "vite": "8.3.4",
+    "vitest": "^4.0.0"
+  }
+}

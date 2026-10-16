@@ -1,41 +1,56 @@
-# Architecture
+# AI Conversation Manager 2.0 architecture
 
-The application is one WPF/.NET Framework 4.8 process with a shared interface and two storage providers. It does not translate conversations between providers.
+## Desktop and compatibility engines
+
+The stable desktop UI uses React/TypeScript with Tauri/Rust. Typed IPC invokes separate C#/.NET Framework 4.8 read and operation bridges; the C# provider adapter invokes a local Node process for DSH. Original WPF sources remain for compatibility and regression coverage. This is a full desktop architecture upgrade, not an all-Rust storage rewrite or a cross-platform release.
+
+```text
+React / TypeScript
+  -> Tauri / Rust (window, file picker, command validation, child processes)
+    -> --desktop-read (catalog, statistics, cached preview)
+    -> --desktop-operation (backup, import, deletion, trash, repair, recovery)
+      -> C# Codex storage / transactions / official deletion protocol
+      -> Node DSH workspace / sessions / packages
+```
+
+The frontend has no arbitrary command execution interface. Rust validates provider, action and identity, limits read output to 32 MiB and read duration to 90 seconds. Write operations are not killed by the read timeout; a cross-process operation lock and window-close guard protect active management work.
 
 ## Source layout
 
-- `src/CodexConversationManager`: original window, reusable dialogs/models, Codex catalog, reader, import transactions, official deletion and sidebar maintenance.
-- `src/CodexConversationManager/Providers`: selected-provider context, window switching and deletion/trash routing.
-- `src/CodexConversationManager/Providers/Dsh`: DSH list/preview adapter, archive commands, package bridge and local Node process transport.
-- `adapters/dsh/backend.cjs`: workspace v2/session v4 scanning, concatenated Zstandard reading, archive state, transactional deletion, recovery and process guards.
-- `adapters/dsh/packages.cjs`: DSH package validation, hashes, identity/path remapping and import transactions.
-- `tests/ui`: synthetic provider-switch and DSH WPF regression entry points compiled into the diagnostic executable, consistent with the existing Codex self-test entry points.
-- `tests/dsh`: Node tests using temporary fictional data; no real session fixtures.
-- `scripts`: SDK build, fixture generation, tests, deterministic packaging and version/package checks.
-- `packaging`: portable launcher. The root launcher is for source checkouts.
+- `desktop/src/`: shared workspace, components, design tokens, operations and virtual reader.
+- `desktop/src-tauri/`: native host and typed commands.
+- `src/CodexConversationManager/`: Codex engine, package validation, lineage, transactions, deletion, repair and retained WPF source.
+- `Providers/DesktopReadBridge.cs`, `DesktopPreviewCache.cs`, `DesktopOperations.cs`, `DesktopPackages.cs`: stable desktop boundary.
+- `Providers/Dsh/`: DSH controller and process/package transport.
+- `adapters/dsh/`: Node workspace v2/session v4 storage, multi-frame Zstandard, archives, package validation and recovery.
+- `desktop/tests/`, `desktop/src/*.test.tsx`: frontend and bridge tests.
+- `tests/dsh/`, `tests/ui/`: storage and retained WPF regression tests.
+- `scripts/`: engine build, checks, stable packaging and release validation.
 
-The previous independent DSH prototype, local SDK/compiler tools, screenshots, fixtures and compiled releases are local artifacts, not a second maintained product or published source.
+## Provider isolation
 
-## Provider boundary
+The UI clears provider-specific selections and in-flight preview state on switches. Codex and DSH keep separate homes, package formats and import handlers. Codex uses CODEX_HOME or its default; DSH uses DSH_MANAGER_HOME, the selected directory or ~/.dsh. Neither converts histories into the other format. Both data roots are protected from project-folder deletion and restoration.
 
-`BackendContext` selects Codex or DSH. Changing provider uses the original language-switch window replacement pattern: create a new controller, retain window placement/current page, clear selection/search/import state, then close the old controller. The last provider is stored in the user's local application settings. Switching is blocked during busy operations.
+The retained WPF UI still uses window/controller replacement for provider changes. That implementation is separate from the released React state model.
 
-Codex refresh/import/repair retain their original implementation. DSH branches before those operations and uses its adapter; shared deletion/trash commands route through `ProviderStorage`. Project file backup and restore reuse the existing path-validated ZIP implementation. Both providers' data directories are protected from project-directory deletion/restore.
+## Conversation reading and compression
 
-Codex uses `CODEX_HOME` or its normal default. DSH uses `DSH_MANAGER_HOME`, the chosen data folder, or `~/.dsh`. Neither selector combines data from both roots. Backup extension and manifest validation prevent cross-provider imports.
+Codex rollout I/O uses RolloutStorage and ZstdSharp.Port for bounded streaming decoding. Compressed previews retain parsed display text because raw compressed offsets cannot seek to decoded messages. Backups snapshot and decode to byte-preserving JSONL before hashing. Imports verify raw archive hashes before decoding. Existing compressed destinations are recompressed into temporary files and atomically replaced under rollback records.
 
-## DSH process and transaction model
+DesktopPreviewCache persists indexed messages and navigation under the user's LocalApplicationData/CodexConversationManager/PreviewCache-v1. Keys include provider, home, project/session IDs, source path, size, creation/modification times and language. A provided source path must stay inside the selected home and cannot traverse a reparse point. Cache misses resolve the session through the catalog; source changes invalidate snapshots.
 
-The C# bridge starts a discovered local Node runtime with a JSON request on standard input. The backend returns a structured result/error on standard output; it uses Node built-in modules only. The release does not download Node at runtime.
+Cached page reads seek length-prefixed records without decompressing the source. Snapshots expire after 24 hours; creation prunes older snapshots against a 512 MiB budget, retaining the current snapshot even if larger. ConversationView virtualizes all messages, prefetches nearby pages, bounds the page working set and rejects mixed revisions. Navigation contains one entry per user message with question and answer excerpts. Individual displayed messages are capped at 100,000 characters; backup contents are independent of that display cap.
 
-Read operations are local. Mutations require the DSH desktop/background hosts to be stopped, take a manager lock, validate current state and write a transaction manifest plus original workspace snapshot. Plans are revalidated before writes. Failed moves attempt rollback; interrupted transactions remain available to the recovery command. Recovery refuses to overwrite unrelated newer state.
+## Transactions and recovery
 
-Archive changes update native `archivedSessionIds`, remove pinning and retain workspace membership order. Deletion includes descendants and moves owned session folders/cache entries into batch trash. Shared attachments, model logs and plugins remain outside deletion scope. Imports track lineage separately and accept only identical/prefix-compatible histories for merge.
+Management requests validate paths, provider, identity and current scope before writing. Codex uses the existing official app-server deletion integration. DSH requires its client/background hosts to be stopped, takes a manager lock, records a transaction manifest and original workspace state, and revalidates plans. Rollback and recovery avoid overwriting unrelated newer state.
 
-Project restore has its own conflict policy and overwrite backup. It is not one atomic transaction with conversation import; partially restored project files may remain after a later failure.
+DSH archives update archivedSessionIds, remove pinning and preserve workspace order. Deletion includes descendants and moves owned records into batch trash; shared attachments, model logs and plugin state remain outside that scope. Imports track lineage and reject divergent merges.
 
-## Validation
+Project restoration has its own conflict policy and overwrite backup. It is not one atomic transaction with conversation import; already restored project files can remain after a later conversation failure.
 
-`scripts/test.ps1` retains original Codex safety/format/rollback and bilingual desktop tests. `scripts/test-providers.ps1` adds DSH storage/package tests and repeated Codex → DSH → Codex transitions, isolation, archive filters, preview and package inspection.
+## Distribution and validation
 
-CI supplies .NET 8 and Node 24. `-SkipUiTests` skips desktop-dependent regressions only; backend and functional tests still run. All release evidence uses synthetic data. DSH live writes/client restart have not been verified end to end.
+The canonical VERSION must match npm, Cargo, Tauri and release notes. scripts/package.ps1 builds the app, runs frontend/Rust/bridge, C# bilingual and DSH tests, packages a per-user NSIS installer and portable ZIP, then verifies checksums, required runtime files and packaged versions. Node and third-party license notices are included. Stable matching v* tags publish a non-prerelease through GitHub Actions.
+
+CI uses Windows, .NET 8, Node 24 and Rust stable MSVC. SkipUiTests excludes only interactive legacy WPF window/render tests. Fixtures are synthetic. DSH real-session writes followed by client restart/resumption remain unverified end to end. See README.md for exact compatibility and size limits.

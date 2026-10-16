@@ -311,7 +311,7 @@ internal static class ImportSnapshotMaintenance
 		return EnumeratePattern(codexHome, "*.cct-bak-*");
 	}
 
-	private static List<string> EnumerateAll(string codexHome)
+	internal static List<string> EnumerateAll(string codexHome)
 	{
 		return EnumerateCurrent(codexHome).Concat(EnumerateLegacy(codexHome))
 			.Distinct(StringComparer.OrdinalIgnoreCase).ToList();

@@ -1,76 +1,58 @@
 name: Publish release
-
 on:
   push:
-    tags:
-      - 'v*'
-
+    tags: ['v*']
 permissions:
   contents: write
-
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 jobs:
   release:
     runs-on: windows-2022
-    timeout-minutes: 25
-
+    timeout-minutes: 60
+    env:
+      CARGO_BUILD_JOBS: 2
     steps:
-      - name: Check out source
-        uses: actions/checkout@v7
-
-      - name: Set up Node.js for DSH tests
-        uses: actions/setup-node@v6
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
         with:
           node-version: 24
-
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v6
+      - uses: actions/setup-dotnet@v6
         with:
           dotnet-version: 8.0.x
-
-      - name: Validate release tag and version
-        id: version
+      - name: Set up Rust
+        shell: powershell
+        run: |
+          rustup default stable-x86_64-pc-windows-msvc
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Validate stable tag
         shell: powershell
         run: |
           $version = [IO.File]::ReadAllText('VERSION').Trim()
-          if ($version -notmatch '^\d+\.\d+\.\d+$') { throw "Invalid VERSION: $version" }
-          if ($env:GITHUB_REF_NAME -ne "v$version") {
-            throw "Tag $env:GITHUB_REF_NAME does not match VERSION v$version."
-          }
-          $releaseNotes = "docs\releases\v$version.md"
-          if (-not (Test-Path -LiteralPath $releaseNotes)) {
-            throw "Missing release notes: $releaseNotes"
-          }
-          [IO.File]::AppendAllText($env:GITHUB_OUTPUT, "version=$version$([Environment]::NewLine)", [Text.UTF8Encoding]::new($false))
+          if ($env:GITHUB_REF_NAME -ne "v$version") { throw 'Release tag does not match VERSION.' }
           .\scripts\Verify-Release.ps1 -Version $version
-
-      - name: Build, test, and package
+      - name: Build, test and package
         shell: powershell
-        # GitHub-hosted Windows runners do not expose the interactive desktop
-        # required by the HWND hit-test and WPF screenshot regressions.
-        run: .\scripts\package.ps1 -Version '${{ steps.version.outputs.version }}' -SkipUiTests
-
-      - name: Create or update GitHub release
+        run: .\scripts\package.ps1 -SkipUiTests
+      - name: Publish stable release
         shell: powershell
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          $version = '${{ steps.version.outputs.version }}'
-          $tag = $env:GITHUB_REF_NAME
-          $zip = Resolve-Path "release\CodexConversationManager-Windows-v$version.zip"
-          $sums = Resolve-Path 'release\SHA256SUMS.txt'
-          $notes = Resolve-Path "docs\releases\v$version.md"
-          $title = "Codex Conversation Manager $tag"
-
-          $releaseListJson = gh release list --repo $env:GITHUB_REPOSITORY --limit 1000 --json tagName
+          $version = [IO.File]::ReadAllText('VERSION').Trim()
+          $tag = "v$version"
+          $base = "release/v$version/AI-Conversation-Manager-$version-Windows-x64"
+          $assets = @("$base-Setup.exe", "$base-Portable.zip", "release/v$version/SHA256SUMS.txt")
+          $notes = "docs/releases/v$version.md"
+          $title = "AI Conversation Manager v$version"
+          $releases = gh release list --repo $env:GITHUB_REPOSITORY --limit 1000 --json tagName | ConvertFrom-Json
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-          $releaseExists = @($releaseListJson | ConvertFrom-Json | Where-Object { $_.tagName -eq $tag }).Count -gt 0
-
-          if ($releaseExists) {
-            gh release edit $tag --repo $env:GITHUB_REPOSITORY --notes-file $notes.Path --title $title
+          if (@($releases | Where-Object tagName -eq $tag).Count -gt 0) {
+            gh release edit $tag --repo $env:GITHUB_REPOSITORY --notes-file $notes --title $title --draft=false --prerelease=false --latest
             if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-            gh release upload $tag $zip.Path $sums.Path --repo $env:GITHUB_REPOSITORY --clobber
-          }
-          else {
-            gh release create $tag $zip.Path $sums.Path --repo $env:GITHUB_REPOSITORY --verify-tag --notes-file $notes.Path --title $title
+            gh release upload $tag @assets --repo $env:GITHUB_REPOSITORY --clobber
+          } else {
+            gh release create $tag @assets --repo $env:GITHUB_REPOSITORY --verify-tag --notes-file $notes --title $title --latest
           }
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

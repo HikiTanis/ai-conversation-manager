@@ -1,6 +1,6 @@
 # Privacy
 
-Codex Conversation Manager is local-first and has no telemetry, analytics, advertising, account system, cloud upload, automatic update, or background synchronization feature.
+AI Conversation Manager is local-first and has no telemetry, analytics, advertising, account system, cloud upload, automatic update, or background synchronization feature. The installer may download Microsoft's WebView2 runtime when missing; this does not upload conversation data.
 
 ## Local data the application can read
 
@@ -16,6 +16,8 @@ Depending on the selected operation, the application can read:
 For Codex, inspection, backup, dry-run, and import are performed by the application's built-in native engine. The release package does not bundle or download a third-party migration executable. Conversation deletion and supported legacy-sidebar repair use a compatible locally available Codex CLI executable through its app-server protocol. Codex CLI 0.148.0 or later is this project's supported compatibility baseline, and the latest release is recommended; the application can also discover compatible runtimes bundled with Codex Desktop or the VS Code extension. The CLI is not required for inspection, backup, or import, and the application does not use it to submit prompts or start model work.
 
 ## Local data the application can write
+
+- Desktop preview snapshots contain message text and navigation excerpts in `%LOCALAPPDATA%/CodexConversationManager/PreviewCache-v1`. They are unencrypted, expire after 24 hours, and are pruned on cache creation against an approximately 512 MiB budget (the current snapshot is retained). Source changes or deletion invalidate reuse; cached files are not immediately erased by source deletion.
 
 - Formal `.codexchat` and `.codexproject` packages are written only to a folder selected by the user.
 - App-trash records are stored inside the active Codex data directory and remain there until restored or permanently purged.

@@ -638,7 +638,7 @@
                         <Border Margin="10,1,0,0" Padding="8,3" CornerRadius="7" Background="#F0F1ED">
                             <TextBlock Text="对话与项目管理器" Foreground="{StaticResource Muted}" FontSize="12" />
                         </Border>
-                        <TextBlock Text="v1.1.0" Foreground="{StaticResource Faint}" FontSize="11.5" Margin="9,2,0,0" VerticalAlignment="Center" />
+                        <TextBlock Text="v2.0.0" Foreground="{StaticResource Faint}" FontSize="11.5" Margin="9,2,0,0" VerticalAlignment="Center" />
                     </StackPanel>
                     <StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center" shell:WindowChrome.IsHitTestVisibleInChrome="True">
                         <Button x:Name="LanguageButton" Style="{StaticResource LanguageButton}" Content="EN" ToolTip="切换为英文" Margin="0,0,8,0" />

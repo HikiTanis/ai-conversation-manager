@@ -1,0 +1,22 @@
+{
+  "bundle": {
+    "active": true,
+    "targets": ["nsis"],
+    "shortDescription": "Local conversation and project manager for Codex and DSH",
+    "resources": {
+      "engine/": "engine/",
+      "../../LICENSE": "LICENSE.txt",
+      "../packaging/README.txt": "README.txt"
+    },
+    "windows": {
+      "webviewInstallMode": { "type": "downloadBootstrapper", "silent": true },
+      "nsis": {
+        "installMode": "currentUser",
+        "languages": ["SimpChinese", "English"],
+        "displayLanguageSelector": true,
+        "installerIcon": "icons/app-icon.ico",
+        "compression": "lzma"
+      }
+    }
+  }
+}

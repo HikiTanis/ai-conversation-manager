@@ -33,7 +33,7 @@ internal sealed partial class MainWindowController
 		public List<SessionInfo> Sessions { get; set; }
 	}
 
-	private sealed class ImportProjectContext
+	internal sealed class ImportProjectContext
 	{
 		public PackProject Project { get; set; }
 
@@ -1725,7 +1725,7 @@ internal sealed partial class MainWindowController
 			string typeLabel = showSubagentSessions ? "子代理" : "主对话";
 			List<SessionInfo> allTypeSessions = CurrentSessionTypeItems();
 			int totalSelected = allTypeSessions.Count((SessionInfo session) => session.IsSelected);
-			BatchProjectDeleteScope projectScope = showSubagentSessions ? null : BuildBatchProjectDeleteScope(selectedProject, sessions.Where((SessionInfo session) => session.IsSelected));
+			BatchProjectDeleteScope projectScope = showSubagentSessions ? null : BuildBatchProjectDeleteScope(selectedProject, sessions.Where((SessionInfo session) => session.IsSelected), projects);
 			bool allProjectMainSelected = projectScope != null && projectScope.AllMainConversationsSelected && string.IsNullOrWhiteSpace(projectScope.AvailabilityBlockReason) && Directory.Exists(projectScope.ProjectPath);
 			bool allVisibleMainSelected = !showSubagentSessions && allTypeSessions.Count > 0 && sessions.Count == allTypeSessions.Count && totalSelected == allTypeSessions.Count;
 			if (allProjectMainSelected)
@@ -2578,7 +2578,7 @@ internal sealed partial class MainWindowController
 		HashSet<string> selectedIds = new HashSet<string>(selectedSessions.Select((SessionInfo item) => item.ThreadId), StringComparer.OrdinalIgnoreCase);
 		List<SessionInfo> allAffectedSessions = deletionPlans.SelectMany((SessionDeletionPlan plan) => plan.AffectedSessions).GroupBy((SessionInfo item) => item.ThreadId, StringComparer.OrdinalIgnoreCase).Select((IGrouping<string, SessionInfo> group) => group.First()).ToList();
 		int additionalDescendantCount = allAffectedSessions.Count((SessionInfo item) => !selectedIds.Contains(item.ThreadId));
-		BatchProjectDeleteScope projectScope = BuildBatchProjectDeleteScope(sourceProject, selectedSessions);
+		BatchProjectDeleteScope projectScope = BuildBatchProjectDeleteScope(sourceProject, selectedSessions, projects);
 		bool allMainConversationsSelected = !deletingSubagents && projectScope.AllMainConversationsSelected;
 		string projectPath = projectScope.ProjectPath;
 		DeleteOptions options = SessionBatchDeleteDialog.Show(window, sourceProject, selectedSessions, projectPath, allMainConversationsSelected, projectScope.TotalMainConversationCount, projectScope.AvailabilityBlockReason);
@@ -2785,7 +2785,7 @@ internal sealed partial class MainWindowController
 		AppDialog.ShowCompat(window, resultText, resultTitle, MessageBoxButton.OK, hasFailure ? MessageBoxImage.Warning : MessageBoxImage.Asterisk);
 	}
 
-	private BatchProjectDeleteScope BuildBatchProjectDeleteScope(ProjectGroup sourceProject, IEnumerable<SessionInfo> selectedSessions)
+	internal static BatchProjectDeleteScope BuildBatchProjectDeleteScope(ProjectGroup sourceProject, IEnumerable<SessionInfo> selectedSessions, IList<ProjectGroup> projects)
 	{
 		BatchProjectDeleteScope result = new BatchProjectDeleteScope
 		{
@@ -3355,7 +3355,7 @@ internal sealed partial class MainWindowController
 		}
 	}
 
-	private static string UniqueProjectFolder(string displayName, int index, ISet<string> used)
+	internal static string UniqueProjectFolder(string displayName, int index, ISet<string> used)
 	{
 		string baseName = TextHelpers.SafeFileName(displayName).Trim().TrimEnd('.', ' ');
 		if (string.IsNullOrWhiteSpace(baseName))
@@ -3477,7 +3477,7 @@ internal sealed partial class MainWindowController
 		}
 	}
 
-	private static PackSession ToPackSession(SessionInfo session, string bundleName)
+	internal static PackSession ToPackSession(SessionInfo session, string bundleName)
 	{
 		PackSession packSession = new PackSession();
 		packSession.thread_id = session.ThreadId;
@@ -3619,7 +3619,7 @@ internal sealed partial class MainWindowController
 		return ManifestProjects(loadedManifest).Any((PackProject project) => project.project_payload != null && !string.IsNullOrWhiteSpace(project.project_payload.archive_file));
 	}
 
-	private static List<PackProject> ManifestProjects(PackManifest manifest)
+	internal static List<PackProject> ManifestProjects(PackManifest manifest)
 	{
 		if (manifest == null)
 		{
@@ -3700,7 +3700,7 @@ internal sealed partial class MainWindowController
 		}
 	}
 
-	private static string SuggestProjectTarget(PackManifest manifest)
+	internal static string SuggestProjectTarget(PackManifest manifest)
 	{
 		string documents = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
 		if (string.IsNullOrWhiteSpace(documents) || !Directory.Exists(documents))
@@ -3843,7 +3843,7 @@ internal sealed partial class MainWindowController
 		return fullPath;
 	}
 
-	private static List<ImportProjectContext> BuildImportContexts(PackManifest manifest, string extractedRoot, string selectedTarget, bool mapProjectPath, bool restoreProjectFiles)
+	internal static List<ImportProjectContext> BuildImportContexts(PackManifest manifest, string extractedRoot, string selectedTarget, bool mapProjectPath, bool restoreProjectFiles)
 	{
 		List<PackProject> packProjects = ManifestProjects(manifest);
 		List<string> targetPaths = mapProjectPath ? BuildProjectTargetPaths(packProjects, selectedTarget) : Enumerable.Repeat(string.Empty, packProjects.Count).ToList();
@@ -4419,7 +4419,7 @@ internal sealed partial class MainWindowController
 		public List<SessionInfo> AffectedSessions { get; set; }
 	}
 
-	private sealed class BatchProjectDeleteScope
+	internal sealed class BatchProjectDeleteScope
 	{
 		public string ProjectPath { get; set; }
 

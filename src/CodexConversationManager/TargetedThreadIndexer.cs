@@ -77,7 +77,8 @@ internal static class TargetedThreadIndexer
 			string[] files;
 			try
 			{
-				files = Directory.GetFiles(directory, "*.jsonl", SearchOption.TopDirectoryOnly);
+				files = Directory.GetFiles(directory, "*.jsonl*", SearchOption.TopDirectoryOnly)
+					.Where(path => RolloutStorage.PlainPath(path).EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase)).ToArray();
 			}
 			catch (IOException)
 			{
@@ -359,10 +360,6 @@ internal static class TargetedThreadIndexer
 			{
 				if (item2 != null && !string.IsNullOrWhiteSpace(item2.thread_id))
 				{
-					if (item2.compressed || (item2.bundle_path ?? string.Empty).EndsWith(".zst", StringComparison.OrdinalIgnoreCase))
-					{
-						throw new InvalidDataException("当前版本无法安全地为 .zst 压缩会话建立定点索引：" + item2.thread_id);
-					}
 					if (titleHints == null || !titleHints.TryGetValue(item2.thread_id, out var value))
 					{
 						value = item2.first_user_message;
@@ -372,7 +369,7 @@ internal static class TargetedThreadIndexer
 					list.Add(new BundleDescriptor
 					{
 						Id = item2.thread_id,
-						BundlePath = item2.bundle_path,
+						BundlePath = RolloutStorage.PlainPath(item2.bundle_path),
 						FilePrefix = ((num < 0) ? Path.GetFileNameWithoutExtension(fileName) : fileName.Substring(0, num)),
 						Title = value,
 						Preview = item2.preview,
@@ -414,7 +411,7 @@ internal static class TargetedThreadIndexer
 	private static ThreadIndexMetadata ReadMetadata(string path, BundleDescriptor descriptor)
 	{
 		string text;
-		using (FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+		using (Stream stream = RolloutStorage.OpenRead(path))
 		{
 			using StreamReader streamReader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, 65536);
 			text = streamReader.ReadLine();
@@ -516,7 +513,7 @@ internal static class TargetedThreadIndexer
 		try
 		{
 			int num = 0;
-			using FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+			using Stream stream = RolloutStorage.OpenRead(path);
 			using StreamReader streamReader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, 65536);
 			string input;
 			while ((input = streamReader.ReadLine()) != null && num++ < 2000)

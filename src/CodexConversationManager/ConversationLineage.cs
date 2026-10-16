@@ -12,14 +12,14 @@ internal static class ConversationLineage
 	public static bool TryReadPayload(string sessionPath, out Dictionary<string, object> payload)
 	{
 		payload = null;
-		if (string.IsNullOrWhiteSpace(sessionPath) || !File.Exists(sessionPath) || sessionPath.EndsWith(".zst", StringComparison.OrdinalIgnoreCase))
+		if (string.IsNullOrWhiteSpace(sessionPath) || !File.Exists(sessionPath))
 		{
 			return false;
 		}
 		try
 		{
 			string firstLine;
-			using (FileStream stream = new FileStream(sessionPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete))
+			using (Stream stream = RolloutStorage.OpenRead(sessionPath))
 			using (StreamReader reader = new StreamReader(stream, Encoding.UTF8, true, 4096))
 			{
 				firstLine = reader.ReadLine();

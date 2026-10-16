@@ -15,6 +15,8 @@ internal static class ConversationIndexMaintenance
 
 	internal static string LogRootOverride { get; set; }
 
+	internal static bool HasCompletedRepairs(string codexHome) => ReadRepairLedger(codexHome).Count > 0;
+
 	public static List<DbThread> FindOrphanedThreads(string codexHome)
 	{
 		string databasePath = WinSqliteMaintenance.FindActiveDatabase(codexHome);

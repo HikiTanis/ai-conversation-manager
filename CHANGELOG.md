@@ -2,9 +2,22 @@
 
 All notable changes are documented here. The project follows semantic versioning for public releases.
 
-## [Unreleased]
+## [2.0.0] - 2026-10-16
 
-No unreleased changes are documented yet.
+### 架构全面升级
+
+- 正式更名为 AI Conversation Manager（AI 对话管理器），统一 Codex 与 DSH 的对话及项目管理；默认 README 改为中文，英文见 README.en.md。
+- 正式桌面界面改为 React + TypeScript，宿主改为 Tauri + Rust，通过独立读写桥接复用 C# / Node 存储引擎；保留备份格式、事务和恢复能力。
+
+### 新增与改进
+
+- 统一项目侧栏、跨项目勾选、备份、包摘要、导入映射、合并／独立副本、回收站及维护入口。
+- 连续虚拟滚动、完整数字导航、提问／回答悬停摘录与跨进程磁盘缓存；源变化后缓存失效。
+- 支持 Codex .jsonl.zst 预览、完整解压备份、压缩导入、父子 ID 重写和压缩目标事务合并。
+- 删除范围确认、过期范围拒绝、多实例写入互斥与操作期间关闭保护。
+- 正式 NSIS 安装包、便携 ZIP、Node 运行时、第三方许可证、SHA-256 与自动发布校验。
+
+详细变更、升级方式与兼容边界见 [v2.0.0 更新说明](docs/releases/v2.0.0.md)。Windows x64；仍保留 C# / Node 引擎，未宣称跨平台或全 Rust 重写。
 
 ## [1.1.0] - 2026-10-12
 
