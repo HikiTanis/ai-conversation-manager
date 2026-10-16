@@ -2,9 +2,9 @@
 
 **A Windows desktop application for Codex and DeepSeek Harness (DSH) conversations, projects and backups.**
 
-[简体中文](README.md) · **Stable v2.0.0** · [Download](https://github.com/HikiTanis/codex-conversation-manager/releases/tag/v2.0.0)
+[简体中文](README.md) · **Stable v2.0.0** · [Download](https://github.com/HikiTanis/ai-conversation-manager/releases/tag/v2.0.0)
 
-Version 2.0.0 is a full desktop architecture upgrade: React + TypeScript UI, a Tauri + Rust host, and separate read/operation bridges to the retained C# and Node storage engines. The product replaces the Codex Conversation Manager name; the repository URL stays unchanged. This is an independent community project, unaffiliated with OpenAI or DeepSeek.
+Version 2.0.0 is a full desktop architecture upgrade: React + TypeScript UI, a Tauri + Rust host, and separate read/operation bridges to the retained C# and Node storage engines. The product replaces the Codex Conversation Manager name; the repository is now named ai-conversation-manager. This is an independent community project, unaffiliated with OpenAI or DeepSeek.
 
 ## Downloads
 

@@ -22,7 +22,7 @@ AI Conversation Manager / AI 对话管理器
 “设置与维护”可切换语言或指定数据目录。
 免安装不表示所有设置与缓存都写入解压目录。
 完整兼容边界与说明：
-https://github.com/HikiTanis/codex-conversation-manager
+https://github.com/HikiTanis/ai-conversation-manager
 
 Stable 2.0.0: extract the entire folder and run Start.cmd, or use the installer.
 Keep engine/ beside the executable. Node.js is bundled.
