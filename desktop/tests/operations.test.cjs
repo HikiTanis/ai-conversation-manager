@@ -44,7 +44,10 @@ function compressSessions(home) {
   }
 }
 for (const [provider, compressed] of [['codex', false], ['codex', true], ['dsh', false]]) test(`${provider}${compressed ? '-zstd' : ''}: backup, read-only inspect, import, merge and copy preserve source`, () => {
-  const scenario = provider + (compressed ? '-zstd' : '');
+  // Match the longer hosted-runner checkout paths even in a short local repo.
+  // A rollout path remains below MAX_PATH, but appending a GUID suffix would
+  // exceed it. Exercise archived import, merge and copy under that boundary.
+  const scenario = (provider + (compressed ? '-zstd' : '')).padEnd(Math.max(10, 101 - work.length), 'x');
   const home = path.join(work, scenario, 'source'); fs.cpSync(source[provider], home, { recursive: true });
   if (compressed) compressSessions(home);
   const before = snapshot(home), args = { provider, home };

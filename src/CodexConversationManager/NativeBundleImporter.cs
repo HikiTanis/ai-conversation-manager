@@ -1277,10 +1277,10 @@ internal static class NativeBundleImporter
 		string destination,
 		bool overwrite)
 	{
-		string temporary = destination +
-			".native-import-" +
-			Guid.NewGuid().ToString("N") +
-			".tmp";
+		// Keep the atomic staging file on the same volume, but do not append
+		// another long suffix to a rollout filename near Windows MAX_PATH.
+		string temporary = Path.Combine(Path.GetDirectoryName(destination),
+			".ccm-import-" + Guid.NewGuid().ToString("N") + ".tmp");
 		try
 		{
 			if (RolloutStorage.IsCompressed(destination)) RolloutStorage.EncodeFile(source, temporary);
