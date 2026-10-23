@@ -2,6 +2,12 @@
 
 All notable changes are documented here. The project follows semantic versioning for public releases.
 
+## [2.0.2] - 2026-10-23
+
+- 修复 2.0.1 删除范围与恢复身份检查误用导入完整性校验，导致本地非零起始 ordinal 的分页片段阻塞删除的问题。
+- 身份扫描仅读取并验证 session_meta、会话 ID 与父子关系；保留重复 ID、路径、范围和导入完整性保护。
+- 增加 ordinal 1604 的普通/压缩片段回归：无关片段不阻塞删除，选中片段先保留原始备份，独立导入继续严格校验。
+
 ## [2.0.1] - 2026-10-23
 
 - 侧栏检查改为只读诊断；识别压缩副本，停用旧修复记录的删除与缓存清理行为。

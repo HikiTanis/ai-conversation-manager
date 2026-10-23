@@ -475,7 +475,7 @@ internal static class ConversationStorage
 		};
 		foreach (string file in RolloutStorage.EnumerateStrict(home))
 		{
-			var metadata = TargetedThreadIndexer.ReadMetadataForIndexing(file, "", "");
+			var metadata = TargetedThreadIndexer.ReadIdentityMetadata(file);
 			if (paths.ContainsKey(metadata.Id)) throw new IOException("发现重复会话 ID，未执行删除：" + metadata.Id);
 			paths.Add(metadata.Id, file);
 			addParent(metadata.Id, metadata.ParentThreadId);
@@ -541,7 +541,7 @@ internal static class ConversationStorage
 		// establish that an identity is absent. Do not use the best-effort UI scan.
 		foreach (string file in RolloutStorage.EnumerateStrict(home))
 		{
-			var metadata = TargetedThreadIndexer.ReadMetadataForIndexing(file, "", "");
+			var metadata = TargetedThreadIndexer.ReadIdentityMetadata(file);
 			if (string.Equals(metadata.Id, id, StringComparison.OrdinalIgnoreCase))
 				throw new IOException("同 ID 会话文件已存在，拒绝覆盖：" + file);
 		}

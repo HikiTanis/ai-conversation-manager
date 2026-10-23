@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.IO;
 using System.Linq;
 using System.Text;
@@ -100,6 +100,22 @@ internal static class StorageSafetySelfTest
                 Assert(Directory.GetFiles(replaceRoot, "*.codex-preserved").Any(path => File.ReadAllText(path) == "concurrent user edit"), "project overwrite lost latest bytes");
             }
             finally { ProjectPayloadService.BeforeReplaceForTest = null; }
+
+            home = Setup("paginated-delete-scope"); session = Session(home, id);
+            var fragment = Session(home, childId, "fragment");
+            string fragmentText = "{\"ordinal\":1604,\"type\":\"session_meta\",\"payload\":{\"id\":\"" + childId + "\",\"history_mode\":\"paginated\",\"cwd\":\"C:/fixture\"}}\n";
+            File.WriteAllText(fragment.SessionPath, fragmentText);
+            Refuses(() => TargetedThreadIndexer.ReadMetadataForIndexing(fragment.SessionPath, "", ""), "fragment must still fail standalone import validation");
+            RolloutStorage.EncodeFile(fragment.SessionPath, fragment.SessionPath + ".zst"); File.Delete(fragment.SessionPath);
+            calls = 0;
+            CodexAppServerThreadDeletion.TestOverride = (_, __) => { calls++; return new OfficialThreadDeletionResult { Succeeded = true }; };
+            ConversationStorage.MoveToTrash(session);
+            Assert(calls == 1 && File.Exists(fragment.SessionPath + ".zst"), "unrelated paginated fragment blocked deletion or was removed");
+            fragment.SessionPath += ".zst"; fragment.Compressed = true;
+            var fragmentDeleted = ConversationStorage.MoveToTrash(fragment);
+            using (var reader = new StreamReader(RolloutStorage.OpenRead(fragmentDeleted.BackupPath)))
+                Assert(reader.ReadToEnd() == fragmentText, "selected fragment backup changed bytes");
+            Assert(calls == 2, "selected paginated fragment was not deletable");
 
             home = Setup("import-races"); session = Session(home, id);
             string bundle = Path.Combine(root, "race.codexbundle"); ExactBundleWriter.CreateSingleSessionBundle(session, bundle);

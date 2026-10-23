@@ -172,6 +172,13 @@ internal static class TargetedThreadIndexer
 		});
 	}
 
+    // Identity checks must not require a standalone importable history. Native
+    // paginated rollouts can be fragments whose first ordinal is non-zero.
+    internal static ThreadIndexMetadata ReadIdentityMetadata(string path)
+    {
+        return ReadMetadata(path, new BundleDescriptor(), identityOnly: true);
+    }
+
 	public static TargetedIndexResult IndexSessionFile(string codexHome, string path, string title, string preview)
 	{
 		if (string.IsNullOrWhiteSpace(path) || !File.Exists(path))
@@ -408,7 +415,7 @@ internal static class TargetedThreadIndexer
 		return fullPath;
 	}
 
-	private static ThreadIndexMetadata ReadMetadata(string path, BundleDescriptor descriptor)
+	private static ThreadIndexMetadata ReadMetadata(string path, BundleDescriptor descriptor, bool identityOnly = false)
 	{
 		string text;
 		using (Stream stream = RolloutStorage.OpenRead(path))
@@ -422,7 +429,7 @@ internal static class TargetedThreadIndexer
 		}
 		JavaScriptSerializer javaScriptSerializer = JsonSerialization.NewSerializer();
 		object value;
-		Dictionary<string, object> dictionary = ((javaScriptSerializer.DeserializeObject(text) is Dictionary<string, object> dictionary2 && dictionary2.TryGetValue("payload", out value)) ? (value as Dictionary<string, object>) : null);
+		Dictionary<string, object> dictionary = ((javaScriptSerializer.DeserializeObject(text) is Dictionary<string, object> dictionary2 && string.Equals(Value(dictionary2, "type"), "session_meta", StringComparison.Ordinal) && dictionary2.TryGetValue("payload", out value)) ? (value as Dictionary<string, object>) : null);
 		if (dictionary == null)
 		{
 			throw new InvalidDataException("会话首行缺少 payload：" + path);
@@ -451,7 +458,7 @@ internal static class TargetedThreadIndexer
 		{
 			text4 = "subagent";
 		}
-		string text5 = FindFirstUserMessage(path, javaScriptSerializer);
+		string text5 = identityOnly ? string.Empty : FindFirstUserMessage(path, javaScriptSerializer);
 		string text6 = ((!string.IsNullOrWhiteSpace(text5)) ? text5 : descriptor.FirstUserMessage);
 		string value3 = ((!string.IsNullOrWhiteSpace(descriptor.Preview)) ? descriptor.Preview : text6);
 		string value4 = ((!string.IsNullOrWhiteSpace(descriptor.Title)) ? descriptor.Title : text6);
@@ -477,8 +484,8 @@ internal static class TargetedThreadIndexer
 		threadIndexMetadata.CreatedAtMilliseconds = EpochMilliseconds(dateTime);
 		threadIndexMetadata.UpdatedAtMilliseconds = EpochMilliseconds(dateTime3);
 		threadIndexMetadata.Source = text3;
-		threadIndexMetadata.HistoryMode = CodexHistoryMode.Normalize(Value(dictionary, "history_mode"), path);
-		CodexHistoryMode.ValidateSessionFile(path, threadIndexMetadata.HistoryMode);
+		threadIndexMetadata.HistoryMode = identityOnly ? Value(dictionary, "history_mode") : CodexHistoryMode.Normalize(Value(dictionary, "history_mode"), path);
+		if (!identityOnly) CodexHistoryMode.ValidateSessionFile(path, threadIndexMetadata.HistoryMode);
 		threadIndexMetadata.ThreadSource = (string.IsNullOrWhiteSpace(text4) ? null : text4);
 		string parentThreadId = Value(dictionary, "parent_thread_id");
 		if (string.IsNullOrWhiteSpace(parentThreadId))
