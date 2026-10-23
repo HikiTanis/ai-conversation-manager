@@ -187,3 +187,73 @@ test('DSH package import rejects stale plan and rolls back injected file move fa
   assert.equal(api.scan(target.home).rows.length, 4);
   assert.equal(fs.existsSync(path.join(target.home, 'conversation-manager-lineage.json')), false);
 });
+
+function extendPack(staging, id = 'parent') {
+  const manifestPath = path.join(staging, 'manifest.json');
+  const m = JSON.parse(fs.readFileSync(manifestPath));
+  const row = m.native_sessions.find(x => x.id === id);
+  const log = path.join(staging, row.folder, row.log);
+  const events = api.readLog(log);
+  events.push({type:'assistant/message', time:125, data:{content:'new continuation'}});
+  const raw = Buffer.from(events.map(e => JSON.stringify(e)).join('\n') + '\n');
+  const bytes = row.log.endsWith('.zstd') ? z.zstdCompressSync(raw) : raw;
+  fs.writeFileSync(log, bytes);
+  const descriptor = row.files.find(f => f.relative === row.log);
+  descriptor.sha256 = api.hash(bytes); descriptor.length = bytes.length;
+  fs.writeFileSync(manifestPath, JSON.stringify(m));
+}
+function importFixture(t) {
+  const f = packageFixture(t), p = packages.importPlan(f.target.home, f.r);
+  packages.importApply(f.target.home, {...f.r, token:p.token}, offline);
+  const parent = api.scan(f.target.home).rows.find(x => x.cwd === f.r.targets.w && x.title === '对话 parent');
+  return {...f, parent};
+}
+test('merge retains destination-only attachments while extending log', t => {
+  const f = importFixture(t), dir = api.safe(f.target.home, f.parent.relative);
+  fs.mkdirSync(path.join(dir, 'assets')); fs.writeFileSync(path.join(dir, 'assets/new.txt'), 'local attachment');
+  extendPack(f.staging);
+  const p = packages.importPlan(f.target.home, f.r);
+  packages.importApply(f.target.home, {...f.r, token:p.token}, offline);
+  assert.equal(fs.readFileSync(path.join(dir, 'assets/new.txt'), 'utf8'), 'local attachment');
+  assert.match(api.preview(f.target.home, f.parent.id).text, /new continuation/);
+});
+test('merge rejects conflicting attachment bytes without changing current data', t => {
+  const f = importFixture(t), dir = api.safe(f.target.home, f.parent.relative);
+  fs.writeFileSync(path.join(dir, 'asset.txt'), 'target content'); extendPack(f.staging);
+  const mp = path.join(f.staging, 'manifest.json'), m = JSON.parse(fs.readFileSync(mp));
+  const row = m.native_sessions.find(x => x.id === 'parent'), bytes = Buffer.from('different package content');
+  fs.writeFileSync(path.join(f.staging, row.folder, 'asset.txt'), bytes);
+  row.files.push({relative:'asset.txt',length:bytes.length,sha256:api.hash(bytes)}); fs.writeFileSync(mp, JSON.stringify(m));
+  const before = api.treeFingerprint(dir), index = fs.readFileSync(f.target.file);
+  assert.throws(() => packages.importPlan(f.target.home, f.r), /附件内容不同/);
+  assert.equal(api.treeFingerprint(dir), before); assert.deepEqual(fs.readFileSync(f.target.file), index);
+});
+test('destructive plan rejects same-size same-time content change', t => {
+  const f = fixture(t), file = path.join(f.home, 'sessions/--E-test--/old/session.v4.jsonl');
+  const p = api.plan(f.home, ['old'], 'trash'), st = fs.statSync(file);
+  fs.writeFileSync(file, fs.readFileSync(file,'utf8').replace('中文问题','新的问题')); fs.utimesSync(file, st.atime, st.mtime);
+  assert.throws(() => api.change(f.home, ['old'], 'trash', p.token, offline), /变化/);
+  assert.ok(fs.existsSync(file)); assert.equal(api.scan(f.home).rows.length, 4);
+});
+test('import rejects content changes made after inspection and retains them', t => {
+  const f = importFixture(t); extendPack(f.staging);
+  const p = packages.importPlan(f.target.home, f.r), file = api.safe(f.target.home, f.parent.relative + '/extra.txt');
+  fs.writeFileSync(file, 'arrived after preview');
+  assert.throws(() => packages.importApply(f.target.home, {...f.r, token:p.token}, offline), /变化/);
+  assert.equal(fs.readFileSync(file,'utf8'), 'arrived after preview');
+});
+test('failed merge rolls back full directory including destination-only attachments', t => {
+  const f = importFixture(t), dir = api.safe(f.target.home, f.parent.relative);
+  fs.writeFileSync(path.join(dir, 'new-asset.txt'), 'retain on rollback'); extendPack(f.staging);
+  const before = api.treeFingerprint(dir), p = packages.importPlan(f.target.home, f.r), rename = fs.renameSync; let failed = false;
+  fs.renameSync = function(from,to) { if (!failed && String(from).includes(path.sep+'new'+path.sep)) { failed = true; throw Error('install failed'); } return rename.apply(this,arguments); };
+  try { assert.throws(() => packages.importApply(f.target.home, {...f.r,token:p.token},offline), /install failed/); }
+  finally { fs.renameSync = rename; }
+  assert.equal(api.treeFingerprint(dir),before);
+});
+test('purging old batch never edits re-created same-ID sessions', t => {
+  const f = fixture(t), r = change(f, ['old'], 'trash'); const dir = f.session('old');
+  const before = api.treeFingerprint(dir), workspaceBefore = fs.readFileSync(f.file);
+  api.purge(f.home,r.batch,offline);
+  assert.equal(api.treeFingerprint(dir),before); assert.deepEqual(fs.readFileSync(f.file),workspaceBefore);
+});

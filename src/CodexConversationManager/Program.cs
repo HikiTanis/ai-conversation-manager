@@ -771,7 +771,7 @@ internal static class Program
 			}
 			string transactionFolder = Path.Combine(text2, "native-import-transaction");
 			Directory.CreateDirectory(transactionFolder);
-			string rollbackActive = Path.Combine(transactionFolder, "rollout-rollback.jsonl");
+			string rollbackActive = Path.Combine(transactionFolder, "rollout-99999999-9999-4999-8999-999999999999.jsonl");
 			string rollbackOriginal = "rollback-original";
 			File.WriteAllText(rollbackActive, rollbackOriginal, Encoding.UTF8);
 			NativeImportTransaction rollbackTransaction = NativeImportTransaction.Begin(text);
@@ -783,26 +783,27 @@ internal static class Program
 			string rollbackUnrelated = Path.Combine(transactionFolder, "rollout-unrelated-88888888-8888-4888-8888-888888888888.jsonl");
 			File.WriteAllText(rollbackImported, "planned-import", Encoding.UTF8);
 			File.WriteAllText(rollbackUnrelated, "unrelated-new-file", Encoding.UTF8);
-			rollbackTransaction.TrackImportedSessionFiles(new string[2] { rollbackImported, rollbackUnrelated }, new string[1] { rollbackImportedId });
+			rollbackTransaction.TrackImportedSessionFiles(new string[3] { rollbackImported, rollbackUnrelated, rollbackActive }, new string[2] { rollbackImportedId, "99999999-9999-4999-8999-999999999999" });
 			ImportTransactionRollbackResult rollbackResult = rollbackTransaction.RollbackAndDeleteTemporaryBackups();
 			if (rollbackResult.RestoredCount != 1 || rollbackResult.DeletedCount != 1 || rollbackResult.RemovedImportedCount != 1 || File.Exists(rollbackBackup) || File.Exists(rollbackImported) || !File.Exists(rollbackUnrelated) || File.ReadAllText(rollbackActive, Encoding.UTF8) != rollbackOriginal)
 			{
 				throw new InvalidOperationException("native import transaction rollback-and-clean test failed");
 			}
 
-			string commitActive = Path.Combine(transactionFolder, "rollout-commit.jsonl");
+			string commitActive = Path.Combine(transactionFolder, "rollout-aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa.jsonl");
 			File.WriteAllText(commitActive, "commit-original", Encoding.UTF8);
 			NativeImportTransaction commitTransaction = NativeImportTransaction.Begin(text);
 			string commitBackup = commitActive + ".ccm-txn-bak-101";
 			File.Copy(commitActive, commitBackup);
 			File.WriteAllText(commitActive, "commit-current", Encoding.UTF8);
+			commitTransaction.TrackImportedSessionFiles(new[] { commitActive }, new[] { "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa" });
 			int committedBackupCount = commitTransaction.CommitAndDeleteTemporaryBackups();
 			if (committedBackupCount != 1 || File.Exists(commitBackup) || File.ReadAllText(commitActive, Encoding.UTF8) != "commit-current")
 			{
 				throw new InvalidOperationException("native import transaction commit-and-clean test failed");
 			}
 
-			string cleanupFailureActive = Path.Combine(transactionFolder, "rollout-commit-cleanup-failure.jsonl");
+			string cleanupFailureActive = Path.Combine(transactionFolder, "rollout-bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb.jsonl");
 			File.WriteAllText(cleanupFailureActive, "cleanup-original", Encoding.UTF8);
 			NativeImportTransaction cleanupFailureTransaction = NativeImportTransaction.Begin(text);
 			string cleanupFailureBackup = cleanupFailureActive + ".ccm-txn-bak-102";
@@ -812,6 +813,7 @@ internal static class Program
 			NativeImportTransaction.CommitCleanupFailureForTest = _ => true;
 			try
 			{
+				cleanupFailureTransaction.TrackImportedSessionFiles(new[] { cleanupFailureActive }, new[] { "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb" });
 				int cleanupFailureCount = cleanupFailureTransaction.CommitAndDeleteTemporaryBackups();
 				ImportTransactionRollbackResult postCommitRollback = cleanupFailureTransaction.RollbackAndDeleteTemporaryBackups();
 				string cleanupRoot = ImportSnapshotMaintenance.TransactionCleanupRoot(text);
@@ -846,6 +848,7 @@ internal static class Program
 			string text8 = Path.Combine(text, "fresh.codexbundle");
 			ExactBundleWriter.CreateSingleSessionBundle(session, text7);
 			ZstdRolloutSelfTest.Run(Path.Combine(text, "zstd-selftest"));
+			StorageSafetySelfTest.Run(Path.Combine(text, "storage-safety-selftest"));
 			string newProject = Path.Combine(text, "new-project");
 			Directory.CreateDirectory(newProject);
 			Dictionary<string, string> dictionary4 = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
@@ -927,7 +930,8 @@ internal static class Program
 			string text12 = WinSqliteMaintenance.ReadBackfillState(databasePath);
 			HashSet<string> filesBeforeImport = TargetedThreadIndexer.SnapshotSessionFiles(text);
 			NativeImportTransaction targetedImportTransaction = NativeImportTransaction.Begin(text);
-			NativeBundleImporter.Import(text7, text, "C:\\fake-project", newProject, NativeBundleImportMode.Replace, dryRun: false);
+			var targetedImport = NativeBundleImporter.Import(text7, text, "C:\\fake-project", newProject, NativeBundleImportMode.Replace, dryRun: false);
+            targetedImportTransaction.TrackImportedSessionFiles(targetedImport.TouchedSessionFiles, new[] { testThreadId });
 			Dictionary<string, string> dictionary5 = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 			dictionary5.Add(testThreadId, "功能测试");
 			Dictionary<string, string> dictionary6 = dictionary5;
@@ -1124,10 +1128,11 @@ internal static class Program
 			File.Copy(text3, trashDeleteLegacySnapshot);
 			WinSqliteMaintenance.AddDesktopCatalogTestThread(text, testThreadId, "功能测试（已更新）", newProject);
 			DeletedSessionResult deletedSessionResult = ConversationStorage.MoveToTrash(session, newProject);
-			if (File.Exists(text3) || File.Exists(trashDeleteLegacySnapshot) || !File.Exists(deletedSessionResult.BackupPath) || !File.Exists(deletedSessionResult.BackupPath + ".delete-info.json"))
+			if (File.Exists(text3) || !File.Exists(trashDeleteLegacySnapshot) || !File.Exists(deletedSessionResult.BackupPath) || !File.Exists(deletedSessionResult.BackupPath + ".delete-info.json"))
 			{
 				throw new InvalidOperationException("safe delete test failed");
 			}
+			File.Delete(trashDeleteLegacySnapshot);
 			if (WinSqliteReader.ReadThreads(databasePath).Any((DbThread item) => string.Equals(item.Id, testThreadId, StringComparison.OrdinalIgnoreCase)) || WinSqliteMaintenance.CountDesktopCatalogThreads(text, new string[1] { testThreadId }) != 0 || !File.Exists(deletedSessionResult.BackupPath + ".delete-info.json"))
 			{
 				throw new InvalidOperationException("safe delete left the conversation visible in a current sidebar index");
@@ -1163,20 +1168,22 @@ internal static class Program
 			string trashPurgeLegacySnapshot = text3 + ".cct-bak-1002";
 			File.Copy(deletedSessionResult2.BackupPath, trashPurgeLegacySnapshot);
 			ConversationStorage.DeleteFromTrash(trashSessionInfo2);
-			if (File.Exists(trashPurgeLegacySnapshot) || File.Exists(deletedSessionResult2.BackupPath) || File.Exists(deletedSessionResult2.BackupPath + ".delete-info.json"))
+			if (!File.Exists(trashPurgeLegacySnapshot) || File.Exists(deletedSessionResult2.BackupPath) || File.Exists(deletedSessionResult2.BackupPath + ".delete-info.json"))
 			{
 				throw new InvalidOperationException("trash permanent purge test failed");
 			}
+			File.Delete(trashPurgeLegacySnapshot);
 			File.WriteAllText(text3, originalSessionContents, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 			TargetedThreadIndexer.IndexSessionFile(text, text3, "功能测试", "真正的问题");
 			WinSqliteMaintenance.AddDesktopCatalogTestThread(text, testThreadId, "功能测试", newProject);
 			string permanentDeleteLegacySnapshot = text3 + ".cct-bak-1003";
 			File.Copy(text3, permanentDeleteLegacySnapshot);
 			DeletedSessionResult deletedSessionResult3 = ConversationStorage.DeletePermanently(session);
-			if (File.Exists(text3) || File.Exists(permanentDeleteLegacySnapshot) || !deletedSessionResult3.PermanentlyDeleted || !string.IsNullOrEmpty(deletedSessionResult3.BackupPath) || WinSqliteReader.ReadThreads(databasePath).Any((DbThread item) => string.Equals(item.Id, testThreadId, StringComparison.OrdinalIgnoreCase)) || WinSqliteMaintenance.CountDesktopCatalogThreads(text, new string[1] { testThreadId }) != 0)
+			if (File.Exists(text3) || !File.Exists(permanentDeleteLegacySnapshot) || !deletedSessionResult3.PermanentlyDeleted || !string.IsNullOrEmpty(deletedSessionResult3.BackupPath) || WinSqliteReader.ReadThreads(databasePath).Any((DbThread item) => string.Equals(item.Id, testThreadId, StringComparison.OrdinalIgnoreCase)) || WinSqliteMaintenance.CountDesktopCatalogThreads(text, new string[1] { testThreadId }) != 0)
 			{
 				throw new InvalidOperationException("direct permanent delete test failed");
 			}
+			File.Delete(permanentDeleteLegacySnapshot);
 			AssertDesktopThreadAbsentForTest(Path.Combine(text, ".codex-global-state.json"), testThreadId);
 			if (officialDeletes.Count((string id) => string.Equals(id, testThreadId, StringComparison.OrdinalIgnoreCase)) != 3)
 			{
@@ -1304,19 +1311,13 @@ internal static class Program
 			}
 			WinSqliteMaintenance.AddDesktopCatalogTestThread(text, testThreadId, "旧失效项测试", newProject);
 			OrphanIndexRepairResult orphanRepair = ConversationIndexMaintenance.RepairSelectedOrphans(text, new string[1] { testThreadId });
-			if (orphanRepair.RepairedCount != 1 || orphanRepair.DesktopRunning || orphanRepair.RemovedDesktopCatalogCount != 1 || orphanRepair.ClearedDesktopCacheCount != 1 || Directory.Exists(staleTaskCacheDirectory) || !File.Exists(orphanRepair.IndexBackupPath) || !File.Exists(orphanRepair.DesktopCatalogBackupPath) || WinSqliteReader.ReadThreads(databasePath).Any((DbThread item) => string.Equals(item.Id, testThreadId, StringComparison.OrdinalIgnoreCase)) || WinSqliteMaintenance.CountDesktopCatalogThreads(text, new string[1] { testThreadId }) != 0)
-			{
-				throw new InvalidOperationException("confirmed stale sidebar item repair test failed");
-			}
-			AssertDesktopThreadAbsentForTest(Path.Combine(text, ".codex-global-state.json"), testThreadId);
-			WinSqliteMaintenance.AddDesktopCatalogTestThread(text, testThreadId, "旧版删除后的目录残留", newProject);
-			Directory.CreateDirectory(staleTaskCacheDirectory);
-			File.WriteAllText(Path.Combine(staleTaskCacheDirectory, "data_1"), "cached-task-list:" + testThreadId, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
-			DesktopTaskCacheInvalidationResult completedRepairCacheCleanup = ConversationIndexMaintenance.InvalidateCompletedRepairCaches(text);
-			if (completedRepairCacheCleanup.RemovedCatalogEntryCount != 1 || completedRepairCacheCleanup.RemovedTimelineEntryCount != 1 || completedRepairCacheCleanup.ClearedDirectoryCount != 1 || completedRepairCacheCleanup.MatchedThreadCount != 1 || string.IsNullOrWhiteSpace(completedRepairCacheCleanup.CatalogBackupPath) || !File.Exists(completedRepairCacheCleanup.CatalogBackupPath) || WinSqliteMaintenance.CountDesktopCatalogThreads(text, new string[1] { testThreadId }) != 0 || Directory.Exists(staleTaskCacheDirectory))
-			{
-				throw new InvalidOperationException("completed stale-sidebar repair did not remove a persisted desktop catalog entry and task-list cache");
-			}
+			if (orphanRepair.RepairedCount != 0 || orphanRepair.DetectedCount != 1 ||
+				!Directory.Exists(staleTaskCacheDirectory) || !WinSqliteReader.ReadThreads(databasePath).Any(t => t.Id == testThreadId) ||
+				WinSqliteMaintenance.CountDesktopCatalogThreads(text, new[] { testThreadId }) != 1)
+				throw new InvalidOperationException("missing-path diagnostics must preserve indexes and cache");
+			var completedRepairCacheCleanup = ConversationIndexMaintenance.InvalidateCompletedRepairCaches(text);
+			if (completedRepairCacheCleanup.RemovedCatalogEntryCount != 0 || !Directory.Exists(staleTaskCacheDirectory))
+				throw new InvalidOperationException("old repair ledger must not replay deletions");
 
 			string guardedParentId = "88888888-8888-4888-8888-888888888888";
 			string guardedChildId = "99999999-9999-4999-8999-999999999999";
@@ -1401,10 +1402,9 @@ internal static class Program
 			}
 			WinSqliteMaintenance.AddDesktopCatalogTestThread(text, legacySidebarThreadId, "旧版半删除侧边栏测试", newProject);
 			OrphanIndexRepairResult legacySidebarRepair = ConversationIndexMaintenance.RepairDeletedSidebarRemnants(text, new string[1] { legacySidebarThreadId });
-			if (legacySidebarRepair.RepairedCount != 1 || legacySidebarRepair.DesktopRunning || legacySidebarRepair.RemovedDesktopCatalogCount != 1 || string.IsNullOrWhiteSpace(legacySidebarRepair.DesktopCatalogBackupPath) || !File.Exists(legacySidebarRepair.DesktopCatalogBackupPath) || WinSqliteMaintenance.CountDesktopCatalogThreads(text, new string[1] { legacySidebarThreadId }) != 0 || File.Exists(legacySidebarPath) || ConversationIndexMaintenance.FindDeletedSidebarRemnants(text).Count != 0 || officialDeletes.Count((string id) => string.Equals(id, legacySidebarThreadId, StringComparison.OrdinalIgnoreCase)) != 1)
-			{
-				throw new InvalidOperationException("log-confirmed legacy stale sidebar repair test failed");
-			}
+			if (legacySidebarRepair.RepairedCount != 0 || WinSqliteMaintenance.CountDesktopCatalogThreads(text, new[] { legacySidebarThreadId }) != 1 || officialDeletes.Any(id => id == legacySidebarThreadId))
+				throw new InvalidOperationException("legacy sidebar diagnostics deleted recovery evidence");
+
 			string legacyThreadId = "33333333-3333-4333-8333-333333333333";
 			string legacyActive = Path.Combine(text2, "rollout-2026-01-04T03-04-05-" + legacyThreadId + ".jsonl");
 			string legacyContents = fixtureContents.Replace(testThreadId, legacyThreadId).Replace("真正的问题", "旧版安全快照测试");
@@ -1413,11 +1413,11 @@ internal static class Program
 			File.WriteAllText(legacyBackupOne, legacyContents, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 			File.WriteAllText(legacyBackupTwo, legacyContents, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 			OrphanedSnapshotCleanupResult legacyMigration = ImportSnapshotMaintenance.MoveOrphanedSnapshotsToTrash(text);
-			if (legacyMigration.MovedToTrashCount != 1 || legacyMigration.RedundantDeletedCount != 1 || File.Exists(legacyBackupOne) || File.Exists(legacyBackupTwo))
+			if (legacyMigration.MovedToTrashCount != 2 || legacyMigration.RedundantDeletedCount != 0 || File.Exists(legacyBackupOne) || File.Exists(legacyBackupTwo))
 			{
 				throw new InvalidOperationException("legacy transaction snapshot migration test failed");
 			}
-			TrashSessionInfo legacyTrash = ConversationStorage.ReadTrash().Single((TrashSessionInfo item) => string.Equals(item.ThreadId, legacyThreadId, StringComparison.OrdinalIgnoreCase));
+			TrashSessionInfo legacyTrash = ConversationStorage.ReadTrash().First((TrashSessionInfo item) => string.Equals(item.ThreadId, legacyThreadId, StringComparison.OrdinalIgnoreCase));
 			if (legacyTrash.DisplayTitle.IndexOf("旧版安全快照", StringComparison.Ordinal) < 0 || !File.Exists(legacyTrash.BackupPath))
 			{
 				throw new InvalidOperationException("legacy transaction snapshot was not visible in trash");
@@ -1679,7 +1679,7 @@ internal static class Program
 			{
 				UiLanguage.Initialize(originalLanguageCode);
 			}
-			return "ImportModes=origin-merge+independent-copy · SamePathCwd=no-op · FormalBackup=.codexchat+.codexproject+legacy · NativeTxn=rollback+commit+delete · LegacyTxnSnapshot=trash-compatibility · Lineage=origin-persist+project-scope+parent-child+fresh-every-time+ambiguity-guard+checksum-guard+outer-archive-guards · IndependentCopy=retained+delete-isolated · TargetedIndex=insert+update+two-project-cwd+native-path+visibility · HistoryMode=legacy+paginated+bidirectional-update+ordinal-gap-guard · ImportRollback=planned-new-files-only+unrelated-preserved+sqlite-compensation+commit-cleanup-failure-safe · RuntimeSelection=cli-version-probe+desktop-install-discovery · DesktopProjectState=existing-remap+create+multi-project+backup+verify · BackupPrewrite=OK · BackfillUnchanged=complete · PendingRunningGuard=OK · Zstd=preview+backup+compressed-bundle+merge+rewrite+rollback+corruption · Preview=2 messages · Trash=copy+official-delete+index-remove+desktop-catalog-remove+list+index-restore+purge+descendant-staging · PermanentDelete=official-delete+index-remove+desktop-catalog-remove+descendant-cascade · OfficialDeleteRefusal=preserves-local-data · StaleSidebar=current+log-confirmed-legacy+official-repair+ledger+live-descendant-guard+orphan-subagent-visible+exact-location+desktop-catalog-remove+desktop-cache-invalidation+completed-repair-catchup · ProjectGuard+Permanent=OK · ProjectPayload=schema5+two-targets+target-guard+combined-pack+create+inspect+restore+skip+backup+traversal-guard · EnglishCriticalFlows=no-CJK · PreviewLayout=auto-fit+fixed-insets+full-width+complete-scroll-end";
+			return "ImportModes=origin-merge+independent-copy · SamePathCwd=no-op · FormalBackup=.codexchat+.codexproject+legacy · NativeTxn=rollback+commit+delete · LegacyTxnSnapshot=trash-compatibility · Lineage=origin-persist+project-scope+parent-child+fresh-every-time+ambiguity-guard+checksum-guard+outer-archive-guards · IndependentCopy=retained+delete-isolated · TargetedIndex=insert+update+two-project-cwd+native-path+visibility · HistoryMode=legacy+paginated+bidirectional-update+ordinal-gap-guard · ImportRollback=planned-new-files-only+unrelated-preserved+sqlite-compensation+commit-cleanup-failure-safe · RuntimeSelection=cli-version-probe+desktop-install-discovery · DesktopProjectState=existing-remap+create+multi-project+backup+verify · BackupPrewrite=OK · BackfillUnchanged=complete · PendingRunningGuard=OK · Zstd=preview+backup+compressed-bundle+merge+rewrite+rollback+corruption · Preview=2 messages · Trash=copy+official-delete+index-remove+desktop-catalog-remove+list+index-restore+purge+descendant-staging · PermanentDelete=official-delete+index-remove+desktop-catalog-remove+descendant-cascade · OfficialDeleteRefusal=preserves-local-data · StaleSidebar=read-only-diagnosis+compressed-rollout+ledger-no-op+live-descendant-guard+orphan-subagent-visible+exact-location+catalog-preserved+cache-preserved · ProjectGuard+Permanent=OK · ProjectPayload=schema5+two-targets+target-guard+combined-pack+create+inspect+restore+skip+backup+traversal-guard · EnglishCriticalFlows=no-CJK · PreviewLayout=auto-fit+fixed-insets+full-width+complete-scroll-end";
 		}
 		finally
 		{

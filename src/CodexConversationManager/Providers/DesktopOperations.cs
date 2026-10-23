@@ -52,31 +52,12 @@ internal static class DesktopOperations
             }
             case "planRepair": case "repair": {
                 if (BackendContext.IsDsh) throw new InvalidOperationException("Sidebar repair is available for Codex.");
-                var orphaned = ConversationIndexMaintenance.FindOrphanedThreads(home);
-                var remnants = ConversationIndexMaintenance.FindDeletedSidebarRemnants(home);
-                var descendants = ConversationIndexMaintenance.FindLiveDescendants(home, orphaned.Concat(remnants).Select(t => t.Id));
-                var blocked = new HashSet<string>(descendants.Select(d => d.RootThreadId), StringComparer.OrdinalIgnoreCase);
-                orphaned = orphaned.Where(t => !blocked.Contains(t.Id)).ToList();
-                remnants = remnants.Where(t => !blocked.Contains(t.Id)).ToList();
-                var snapshots = Environment.GetEnvironmentVariable("CODEX_MIGRATOR_SKIP_SNAPSHOT_MAINTENANCE") == "1" || Environment.GetEnvironmentVariable("CODEX_MIGRATOR_SKIP_LEGACY_CCT_MAINTENANCE") == "1" ? new List<string>() : ImportSnapshotMaintenance.EnumerateAll(home);
-                bool cacheCleanup = ConversationIndexMaintenance.HasCompletedRepairs(home);
-                string token = Hash(cacheCleanup + "\n" + string.Join("\n", orphaned.Select(t => "orphan:" + t.Id).Concat(remnants.Select(t => "remnant:" + t.Id))
-                    .Concat(descendants.Select(d => "blocked:" + d.RootThreadId + "|" + d.ThreadId))
-                    .Concat(snapshots.Select(p => { var f = new FileInfo(p); return "snapshot:" + p + "|" + f.Length + "|" + f.LastWriteTimeUtc.Ticks; })).OrderBy(v => v)));
-                if (request.action == "planRepair") return new { token, ids = orphaned.Select(t => t.Id).Concat(remnants.Select(t => t.Id)).Distinct().ToArray(), snapshotCount = snapshots.Count, cacheCleanup,
-                    blocked = descendants.Select(d => new { id = d.ThreadId, rootId = d.RootThreadId, title = d.Title, path = d.RolloutPath }).ToArray() };
-                if (request.token != token) throw new InvalidOperationException("Repair scope changed. Inspect it again.");
-                EnsureClosed(home);
-                var repaired = ConversationIndexMaintenance.RepairSelectedOrphans(home, orphaned.Select(t => t.Id));
-                var legacy = ConversationIndexMaintenance.RepairDeletedSidebarRemnants(home, remnants.Select(t => t.Id));
-                var cache = ConversationIndexMaintenance.InvalidateCompletedRepairCaches(home);
-                var recovered = snapshots.Count == 0 ? new OrphanedSnapshotCleanupResult() : ImportSnapshotMaintenance.MoveOrphanedSnapshotsToTrash(home);
-                string backups = string.Join("\n", new[] { repaired.IndexBackupPath, repaired.DesktopCatalogBackupPath, repaired.DesktopStateBackupPath, legacy.IndexBackupPath, legacy.DesktopCatalogBackupPath, legacy.DesktopStateBackupPath, cache.CatalogBackupPath }.Where(p => !string.IsNullOrWhiteSpace(p)).Distinct());
-                return Message(L("修复完成。", "Repair completed.") + "\n" + L("已修复记录：", "Repaired entries: ") + (repaired.RepairedCount + legacy.RepairedCount)
-                    + "\n" + L("保留关联存活子代理的父记录：", "Preserved parents with live descendants: ") + blocked.Count
-                    + "\n" + L("已转入回收站的事务快照：", "Transaction snapshots moved to trash: ") + recovered.MovedToTrashCount
-                    + "\n" + L("清理重复快照：", "Redundant snapshots cleaned: ") + recovered.RedundantDeletedCount
-                    + (backups.Length == 0 ? "" : "\n" + L("索引备份：\n", "Index backups:\n") + backups));
+                var missing = ConversationIndexMaintenance.FindOrphanedThreads(home);
+                string diagnostic = L("检查完成。发现 ", "Check completed. Found ") + missing.Count +
+                    L(" 条文件路径缺失的索引记录。已保留所有会话、索引、缓存和恢复快照；不会自动删除。请从备份恢复缺失内容。", " index entries with missing rollout paths. All conversations, indexes, caches and recovery snapshots were preserved. No automatic deletion is performed; restore missing content from a backup.");
+                if (request.action == "planRepair") return new { token = "read-only", ids = new string[0], snapshotCount = 0, cacheCleanup = false, diagnostic,
+                    blocked = ConversationIndexMaintenance.FindLiveDescendants(home, missing.Select(t => t.Id)).Select(d => new { id = d.ThreadId, rootId = d.RootThreadId, title = d.Title, path = d.RolloutPath }).ToArray() };
+                return Message(diagnostic);
             }
         }
         List<ProjectGroup> projects = BackendContext.IsDsh

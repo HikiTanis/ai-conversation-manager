@@ -22,7 +22,7 @@ function lineage(h) {
 }
 function files(dir, prefix = '') {
   const result = [];
-  for (const e of fs.readdirSync(dir, { withFileTypes: true })) {
+  for (const e of fs.readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
     if (e.isSymbolicLink()) fail('备份目录包含链接：' + e.name);
     const relative = path.join(prefix, e.name), file = path.join(dir, e.name);
     if (e.isDirectory()) result.push(...files(file, relative));
@@ -51,10 +51,12 @@ function exportPackage(home, r) {
       fs.mkdirSync(path.dirname(to), { recursive: true }); fs.copyFileSync(from, to);
       if (a.hash(fs.readFileSync(to)) !== item.sha256 || a.hash(fs.readFileSync(from)) !== item.sha256) fail('会话在备份时变化，请退出 DSH 后重试。');
     }
+    if (JSON.stringify(files(source)) !== JSON.stringify(entries)) fail('会话附件在备份中变化，已停止。');
     a.readLog(a.safe(root, path.join(folder, path.basename(row.file))));
     manifest.native_sessions.push({ id: row.id, origin: links[row.id]?.origin || row.id, title: row.title, cwd: row.cwd, project_key: project.project_key, parent: row.parent, archived: row.archived, pinned: row.pinned, folder, log: path.basename(row.file), files: entries });
     manifest.sessions.push({ thread_id: row.id, origin_thread_id: links[row.id]?.origin || row.id, title: row.title, project_key: project.project_key, archived: row.archived, is_subagent: !!row.parent, updated_at: row.updated });
   }
+  if (JSON.stringify(lineage(home)) !== JSON.stringify(links)) fail('同源索引在备份中变化。');
   a.assertUnchanged(w); a.atomic(path.join(root, 'manifest.json'), manifest);
   return manifest;
 }
@@ -127,6 +129,13 @@ function buildPlan(home, r) {
       warnings.push(item.row.title + '：包外父会话关系已解除。');
     }
     item.log = log;
+    item.currentFiles = item.current ? files(a.safe(home, item.current.relative)) : [];
+    const assets = fs => fs.filter(f => !/^session(?:\.v\d+)?\.jsonl(?:\.zstd)?$/.test(f.relative));
+    const incomingAssets = new Map(assets(item.row.files).map(f => [f.relative.toLowerCase(), f]));
+    for (const f of assets(item.currentFiles)) {
+      const incoming = incomingAssets.get(f.relative.toLowerCase());
+      if (incoming && incoming.sha256 !== f.sha256) fail('同名会话附件内容不同，拒绝覆盖：' + f.relative + '；请选择独立复制。');
+    }
     if (item.current) {
       const current = a.readLog(a.safe(home, item.current.file));
       if (current[0].createdAt !== log[0].createdAt || current[0].isSeeded !== log[0].isSeeded) fail('同源会话的创建身份不同，拒绝覆盖：' + item.row.title);
@@ -135,7 +144,7 @@ function buildPlan(home, r) {
       if (current.length >= log.length) item.skip = true;
     }
   }
-  const token = a.hash(Buffer.from(JSON.stringify({ package: m, targets, mode: r.mode, workspace: a.hash(w.bytes), lineage: links, current: scan.rows })));
+  const token = a.hash(Buffer.from(JSON.stringify({ package: m, targets, mode: r.mode, workspace: a.hash(w.bytes), lineage: links, current: scan.rows, content: actions.map(x => [x.current?.id, x.currentFiles]) })));
   return { root, manifest: m, w, links, actions, token, count: actions.filter(x => !x.skip).length, skipped: actions.filter(x => x.skip).length, warnings };
 }
 function importPlan(home, r) { const p = buildPlan(home, r); return { token: p.token, count: p.count, skipped: p.skipped, warnings: p.warnings }; }
@@ -167,14 +176,22 @@ function importApply(home, r, guard = a.assertOffline) {
     const m = b.manifest;
     m.lineageBefore = fs.existsSync(lineagePath(home)) ? p.links : null;
     m.lineageAfter = linksAfter; m.createdPaths = [];
+    b.save(); // Durable record even if staging fails before any live write.
     for (const [i, item] of p.actions.entries()) {
       if (item.skip) continue;
       const staging = a.safe(b.dir, path.join('new', String(i))); fs.mkdirSync(staging, { recursive: true });
+      // Keep assets added at the destination since the exported snapshot.
+      for (const f of item.currentFiles.filter(f => !/^session(?:\.v\d+)?\.jsonl(?:\.zstd)?$/.test(f.relative))) {
+        const target = a.safe(staging, f.relative); fs.mkdirSync(path.dirname(target), { recursive: true });
+        fs.copyFileSync(a.safe(home, path.join(item.current.relative, f.relative)), target, fs.constants.COPYFILE_EXCL);
+        if (a.hash(fs.readFileSync(target)) !== f.sha256) fail('目标附件在暂存期间变化。');
+      }
       // Preserve session-local assets, but don't install obsolete generation
       // files under a fresh identity. The formal backup retains all originals.
       for (const f of item.row.files.filter(f => !/^session(?:\.v\d+)?\.jsonl(?:\.zstd)?$/.test(f.relative))) {
         const target = a.safe(staging, f.relative); fs.mkdirSync(path.dirname(target), { recursive: true });
-        fs.copyFileSync(a.safe(p.root, path.join(item.row.folder, f.relative)), target);
+        if (!fs.existsSync(target)) fs.copyFileSync(a.safe(p.root, path.join(item.row.folder, f.relative)), target, fs.constants.COPYFILE_EXCL);
+        if (a.hash(fs.readFileSync(target)) !== f.sha256) fail('会话附件在导入期间变化。');
       }
       const raw = Buffer.from(item.log.map(x => JSON.stringify(x)).join('\n') + '\n');
       const logFile = 'session.v4.jsonl.zstd';
@@ -189,6 +206,7 @@ function importApply(home, r, guard = a.assertOffline) {
     try {
       guard(); a.assertUnchanged(p.w);
       if (JSON.stringify(lineage(home)) !== JSON.stringify(p.links)) fail('同源索引已变化。');
+      for (const item of p.actions) if (item.current && JSON.stringify(files(a.safe(home, item.current.relative))) !== JSON.stringify(item.currentFiles)) fail('目标会话内容在导入前变化，已停止。');
       for (const move of m.moves) { const target = a.safe(b.dir, move.target); fs.mkdirSync(path.dirname(target), { recursive: true }); fs.renameSync(a.safe(home, move.source), target); }
       for (const created of m.createdPaths) { const target = a.safe(home, created.source); fs.mkdirSync(path.dirname(target), { recursive: true }); fs.renameSync(a.safe(b.dir, created.staged), target); }
       a.assertUnchanged(p.w); a.atomic(lineagePath(home), linksAfter); a.atomic(p.w.file, after);

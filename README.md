@@ -2,20 +2,22 @@
 
 **在一个 Windows 桌面应用里管理 Codex 与 DeepSeek Harness（DSH）的对话、项目和备份。**
 
-[English](README.en.md) · **正式版 v2.0.0** · [下载安装包](https://github.com/HikiTanis/ai-conversation-manager/releases/tag/v2.0.0) · [完整更新说明](docs/releases/v2.0.0.md)
+[English](README.en.md) · **正式版 v2.0.1** · [下载安装包](https://github.com/HikiTanis/ai-conversation-manager/releases/tag/v2.0.1) · [完整更新说明](docs/releases/v2.0.1.md)
 
 2.0.0 是桌面架构全面升级的正式版本：界面改用 **React + TypeScript**，桌面宿主改用 **Tauri + Rust**，通过独立读写桥接复用经过验证的 C#／Node 存储与事务引擎。新版统一了 Codex 与 DSH 的使用流程，增加压缩会话支持、连续阅读、完整数字导航与持久缓存。旧版名称 Codex Conversation Manager 更名为 AI Conversation Manager；仓库已更名为 ai-conversation-manager。
 
 本项目是独立社区工具，与 OpenAI、DeepSeek 无隶属关系。
 
+> **v2.0.1 是数据安全修复版本，建议旧版用户升级。** 侧栏检查已改为只读诊断，不再调用删除；导入、回收站及 DSH 合并增加数据保护。见 [修复说明](docs/releases/v2.0.1.md) 和 [审查记录](docs/DATA-SAFETY-AUDIT.md)。
+
 ## 下载与运行
 
-在 [v2.0.0 Releases](https://github.com/HikiTanis/ai-conversation-manager/releases/tag/v2.0.0) 下载：
+在 [v2.0.1 Releases](https://github.com/HikiTanis/ai-conversation-manager/releases/tag/v2.0.1) 下载：
 
 | 文件 | 用途 |
 | --- | --- |
-| `AI-Conversation-Manager-2.0.0-Windows-x64-Setup.exe` | 正式安装包，中英文安装向导，按当前用户安装 |
-| `AI-Conversation-Manager-2.0.0-Windows-x64-Portable.zip` | 免安装版，完整解压后运行 `Start.cmd` |
+| `AI-Conversation-Manager-2.0.1-Windows-x64-Setup.exe` | 正式安装包，中英文安装向导，按当前用户安装 |
+| `AI-Conversation-Manager-2.0.1-Windows-x64-Portable.zip` | 免安装版，完整解压后运行 `Start.cmd` |
 | `SHA256SUMS.txt` | 安装包与 ZIP 的 SHA-256 校验值 |
 
 运行环境：**Windows 10/11 x64、.NET Framework 4.8、Microsoft Edge WebView2 Runtime**。安装包会在缺少 WebView2 时联网安装；免安装版使用系统已有的 WebView2。Node.js 运行时随包附带，普通使用不需要 Rust、C++、Node.js 或 .NET SDK。主程序旁的 `engine/` 必须保留。
@@ -47,7 +49,7 @@
 | 导入检查、路径映射、智能合并、独立副本 | 支持 | 支持 |
 | 删除范围预览、后代联动、回收站恢复与清除 | 支持 | 支持 |
 | 旧格式导入 | `.codexpack`／`.codexbundle` | 不适用 |
-| 侧栏残留修复／中断操作恢复 | Codex 侧栏修复 | DSH 中断恢复 |
+| 侧栏残留修复／中断操作恢复 | Codex 只读诊断 | DSH 中断恢复 |
 
 两个来源各自管理，**不进行 Codex 与 DSH 格式互转**。导入目标需要先由对应客户端初始化。
 
@@ -62,7 +64,7 @@
 
 ## 兼容范围与边界
 
-- Codex 的读取、备份和导入使用内置引擎；删除与侧栏修复要求 **Codex CLI 0.148.0 或更高版本**，也会尝试发现兼容的客户端内置运行时。
+- Codex 的读取、备份和导入使用内置引擎；删除要求 **Codex CLI 0.148.0 或更高版本**，也会尝试发现兼容的客户端内置运行时。
 - Codex 压缩会话备份保存完整解压 JSONL 与校验值。新导入使用 JSONL，合并到已有压缩目标时保持压缩。单条 rollout 解压上限 8 GiB，涉及 ID 重写的单项上限 512 MiB。
 - DSH 适配基线为 Desktop 0.2.0-rc.2、workspace v2／session v4；单日志读取／解压上限 128 MiB，预览总字符上限 200 万。真实 DSH 会话写入后重启与继续对话尚未完成端到端验证；自动化使用合成数据。
 - 桌面预览单条消息最多显示 100,000 字符，超过时明确标记截断；这不等于备份内容被截断。缓存保存于用户本地应用数据目录，24 小时过期，按约 512 MiB 预算清理（当前单个快照可能超过预算）。

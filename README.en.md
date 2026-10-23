@@ -2,14 +2,16 @@
 
 **A Windows desktop application for Codex and DeepSeek Harness (DSH) conversations, projects and backups.**
 
-[简体中文](README.md) · **Stable v2.0.0** · [Download](https://github.com/HikiTanis/ai-conversation-manager/releases/tag/v2.0.0)
+[简体中文](README.md) · **Stable v2.0.1** · [Download](https://github.com/HikiTanis/ai-conversation-manager/releases/tag/v2.0.1)
 
 Version 2.0.0 is a full desktop architecture upgrade: React + TypeScript UI, a Tauri + Rust host, and separate read/operation bridges to the retained C# and Node storage engines. The product replaces the Codex Conversation Manager name; the repository is now named ai-conversation-manager. This is an independent community project, unaffiliated with OpenAI or DeepSeek.
 
+> **v2.0.1 is a data-safety fix; upgrading from earlier versions is recommended.** Sidebar checks are read-only, with additional import, trash and DSH safeguards. See [release notes](docs/releases/v2.0.1.md) and [audit](docs/DATA-SAFETY-AUDIT.md).
+
 ## Downloads
 
-- `AI-Conversation-Manager-2.0.0-Windows-x64-Setup.exe`: per-user installer.
-- `AI-Conversation-Manager-2.0.0-Windows-x64-Portable.zip`: extract the entire folder and run `Start.cmd`.
+- `AI-Conversation-Manager-2.0.1-Windows-x64-Setup.exe`: per-user installer.
+- `AI-Conversation-Manager-2.0.1-Windows-x64-Portable.zip`: extract the entire folder and run `Start.cmd`.
 - `SHA256SUMS.txt`: verify both downloads with `Get-FileHash -Algorithm SHA256`.
 
 Requires Windows 10/11 x64, .NET Framework 4.8 and WebView2. The installer downloads WebView2 if missing. Node.js and its license are bundled; retain the whole `engine/` directory. No development toolchain is needed to run the application. Binaries are not Authenticode-signed.
@@ -30,7 +32,7 @@ Install or extract into a new directory when upgrading from 1.x. Existing data a
 
 Codex uses `.codexchat` / `.codexproject`; DSH uses `.dshchat` / `.dshproject`. Legacy Codex `.codexpack` / `.codexbundle` imports remain supported. Packages cannot be cross-imported between providers. Codex archive changes still use the Codex client; DSH archive changes are available here.
 
-Codex deletion and sidebar repair require **Codex CLI 0.148.0 or later**. Codex rollout decoding is limited to 8 GiB; identity rewriting retains a 512 MiB per-entry limit. New imports use JSONL; existing compressed destinations stay compressed. Backups preserve full decoded content.
+Codex deletion requires **Codex CLI 0.148.0 or later**. Codex rollout decoding is limited to 8 GiB; identity rewriting retains a 512 MiB per-entry limit. New imports use JSONL; existing compressed destinations stay compressed. Backups preserve full decoded content.
 
 DSH targets Desktop 0.2.0-rc.2, workspace v2 / session v4, with 128 MiB log limits and a 2-million-character preview limit. Real-session writes followed by client restart/resumption have not been verified end to end; automated write tests use synthetic data.
 

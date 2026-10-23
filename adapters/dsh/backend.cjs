@@ -190,10 +190,21 @@ function selection(home, ids, descendants) {
   }
   return s.rows.filter(x => selected.has(x.id));
 }
-function fingerprint(rows) { return hash(JSON.stringify(rows)); }
+function treeFingerprint(root) {
+  const entries = [];
+  function walk(p, relative) {
+    const st = fs.lstatSync(p);
+    if (st.isSymbolicLink()) fail('无法对链接进行安全校验：' + p);
+    if (st.isDirectory()) for (const name of fs.readdirSync(p).sort()) walk(path.join(p, name), path.join(relative, name));
+    else if (st.isFile()) entries.push([relative, hash(fs.readFileSync(p))]);
+    else fail('不支持的文件类型：' + p);
+  }
+  walk(root, ''); return hash(JSON.stringify(entries));
+}
+function fingerprint(rows, home) { return hash(JSON.stringify(rows.map(row => ({...row, contentHash: treeFingerprint(safe(home, row.relative))})))); }
 function plan(home, ids, operation) {
   const rows = selection(home, ids, operation === 'trash');
-  return { rows, token: fingerprint(rows), count: rows.length, bytes: rows.reduce((n, x) => n + x.bytes, 0) };
+  return { rows, token: fingerprint(rows, home), count: rows.length, bytes: rows.reduce((n, x) => n + x.bytes, 0) };
 }
 function assertUnchanged(w) { if (hash(fs.readFileSync(w.file)) !== hash(w.bytes)) fail('DSH 工作区索引已被其他程序修改，请刷新后重试。'); }
 function withLock(home, guard, fn, allowPending = false) {
@@ -242,6 +253,7 @@ function change(home, ids, operation, token, guard = assertOffline) {
     b.save();
     try {
       guard(); assertUnchanged(w);
+      if (plan(home, ids, operation).token !== p.token) fail('会话内容在操作前发生变化，已停止。');
       for (const m of b.manifest.moves) {
         const target = safe(b.dir, m.target);
         fs.mkdirSync(path.dirname(target), { recursive: true });
@@ -390,7 +402,7 @@ async function main(request) {
     default: fail('未知命令。');
   }
 }
-module.exports = { scan, preview, plan, change, restore, recover, readLog, safe, assertOffline, encode, purge, workspace, atomic, treeSize, hash, withLock, batchCreate, assertUnchanged, manifest };
+module.exports = { treeFingerprint, scan, preview, plan, change, restore, recover, readLog, safe, assertOffline, encode, purge, workspace, atomic, treeSize, hash, withLock, batchCreate, assertUnchanged, manifest };
 if (require.main === module) {
   let input = '';
   process.stdin.setEncoding('utf8');

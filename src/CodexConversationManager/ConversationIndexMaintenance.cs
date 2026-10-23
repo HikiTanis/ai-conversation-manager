@@ -15,7 +15,7 @@ internal static class ConversationIndexMaintenance
 
 	internal static string LogRootOverride { get; set; }
 
-	internal static bool HasCompletedRepairs(string codexHome) => ReadRepairLedger(codexHome).Count > 0;
+	internal static bool HasCompletedRepairs(string codexHome) => false; // Old repair ledgers are evidence, never deletion authority.
 
 	public static List<DbThread> FindOrphanedThreads(string codexHome)
 	{
@@ -36,7 +36,7 @@ internal static class ConversationIndexMaintenance
 			try
 			{
 				string path = Path.GetFullPath(TextHelpers.StripExtendedPrefix(thread.RolloutPath));
-				if ((TextHelpers.IsWithin(path, sessionsRoot) || TextHelpers.IsWithin(path, archivedRoot)) && !File.Exists(path))
+				if ((TextHelpers.IsWithin(path, sessionsRoot) || TextHelpers.IsWithin(path, archivedRoot)) && !RolloutStorage.ExistsInEitherEncoding(path))
 				{
 					result.Add(thread);
 				}
@@ -50,42 +50,12 @@ internal static class ConversationIndexMaintenance
 
 	public static OrphanIndexRepairResult RepairSelectedOrphans(string codexHome, IEnumerable<string> confirmedThreadIds)
 	{
-		HashSet<string> confirmed = new HashSet<string>((confirmedThreadIds ?? Enumerable.Empty<string>()).Where((string id) => !string.IsNullOrWhiteSpace(id)), StringComparer.OrdinalIgnoreCase);
-		List<DbThread> orphans = FindOrphanedThreads(codexHome)
-			.Where((DbThread thread) => confirmed.Contains(thread.Id))
-			.ToList();
-		OrphanIndexRepairResult result = new OrphanIndexRepairResult
-		{
-			DetectedCount = orphans.Count
-		};
-		if (confirmed.Count == 0 || orphans.Count == 0)
-		{
-			return result;
-		}
-		if (CodexDesktopProjectRegistry.IsDesktopRunning(codexHome))
-		{
-			result.DesktopRunning = true;
-			return result;
-		}
-		string[] ids = orphans.Select((DbThread thread) => thread.Id).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
-		CodexDesktopProjectRegistry.EnsureImportCanWrite(codexHome);
-		foreach (DbThread orphan in orphans)
-		{
-			EnsureNoLiveDescendants(codexHome, orphan.Id);
-			CompleteOfficialDeletion(codexHome, orphan);
-			WriteRepairLedger(codexHome, new string[1] { orphan.Id });
-			result.RepairedCount++;
-		}
-		ThreadIndexRemovalResult index = WinSqliteMaintenance.RemoveThreads(codexHome, ids);
-		DesktopCatalogRemovalResult catalog = WinSqliteMaintenance.RemoveDesktopCatalogThreads(codexHome, ids);
-		DesktopThreadRemovalResult desktop = CodexDesktopProjectRegistry.RemoveThreads(codexHome, ids);
-		DesktopTaskCacheInvalidationResult cache = CodexDesktopTaskCache.InvalidateThreads(codexHome, ids);
-		result.IndexBackupPath = index.BackupPath;
-		result.DesktopCatalogBackupPath = catalog.BackupPath;
-		result.RemovedDesktopCatalogCount = catalog.RemovedCatalogEntryCount;
-		result.DesktopStateBackupPath = desktop.BackupPath;
-		result.ClearedDesktopCacheCount = cache.ClearedDirectoryCount;
-		return result;
+		var ids = new HashSet<string>(confirmedThreadIds ?? Enumerable.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+		var missing = FindOrphanedThreads(codexHome).Where(t => ids.Contains(t.Id)).ToList();
+		foreach (var thread in missing) EnsureNoLiveDescendants(codexHome, thread.Id);
+		// A missing rollout is not evidence of an intentional deletion. Preserve its
+		// history, index, caches and any recovery material for explicit recovery.
+		return new OrphanIndexRepairResult { DetectedCount = missing.Count };
 	}
 
 	public static List<DbThread> FindDeletedSidebarRemnants(string codexHome)
@@ -117,58 +87,15 @@ internal static class ConversationIndexMaintenance
 
 	public static OrphanIndexRepairResult RepairDeletedSidebarRemnants(string codexHome, IEnumerable<string> confirmedThreadIds)
 	{
-		HashSet<string> confirmed = new HashSet<string>((confirmedThreadIds ?? Enumerable.Empty<string>()).Where((string id) => !string.IsNullOrWhiteSpace(id)), StringComparer.OrdinalIgnoreCase);
-		List<DbThread> remnants = FindDeletedSidebarRemnants(codexHome)
-			.Where((DbThread thread) => confirmed.Contains(thread.Id))
-			.ToList();
-		OrphanIndexRepairResult result = new OrphanIndexRepairResult
-		{
-			DetectedCount = remnants.Count,
-			IndexBackupPath = FindLatestIndexBackup(codexHome)
-		};
-		if (confirmed.Count == 0 || remnants.Count == 0)
-		{
-			return result;
-		}
-		if (CodexDesktopProjectRegistry.IsDesktopRunning(codexHome))
-		{
-			result.DesktopRunning = true;
-			return result;
-		}
-		CodexDesktopProjectRegistry.EnsureImportCanWrite(codexHome);
-		List<string> completed = new List<string>();
-		foreach (DbThread remnant in remnants)
-		{
-			EnsureNoLiveDescendants(codexHome, remnant.Id);
-			CompleteOfficialDeletion(codexHome, remnant);
-			completed.Add(remnant.Id);
-			WriteRepairLedger(codexHome, new string[1] { remnant.Id });
-			result.RepairedCount++;
-		}
-		ThreadIndexRemovalResult index = WinSqliteMaintenance.RemoveThreads(codexHome, completed);
-		DesktopCatalogRemovalResult catalog = WinSqliteMaintenance.RemoveDesktopCatalogThreads(codexHome, completed);
-		DesktopThreadRemovalResult desktop = CodexDesktopProjectRegistry.RemoveThreads(codexHome, completed);
-		DesktopTaskCacheInvalidationResult cache = CodexDesktopTaskCache.InvalidateThreads(codexHome, completed);
-		if (!string.IsNullOrWhiteSpace(index.BackupPath))
-		{
-			result.IndexBackupPath = index.BackupPath;
-		}
-		result.DesktopCatalogBackupPath = catalog.BackupPath;
-		result.RemovedDesktopCatalogCount = catalog.RemovedCatalogEntryCount;
-		result.DesktopStateBackupPath = desktop.BackupPath;
-		result.ClearedDesktopCacheCount = cache.ClearedDirectoryCount;
-		return result;
+		var ids = new HashSet<string>(confirmedThreadIds ?? Enumerable.Empty<string>(), StringComparer.OrdinalIgnoreCase);
+		return new OrphanIndexRepairResult { DetectedCount = FindDeletedSidebarRemnants(codexHome).Count(t => ids.Contains(t.Id)) };
 	}
 
 	public static DesktopTaskCacheInvalidationResult InvalidateCompletedRepairCaches(string codexHome)
 	{
-		HashSet<string> completedIds = ReadRepairLedger(codexHome);
-		DesktopCatalogRemovalResult catalog = WinSqliteMaintenance.RemoveDesktopCatalogThreads(codexHome, completedIds);
-		DesktopTaskCacheInvalidationResult result = CodexDesktopTaskCache.InvalidateThreads(codexHome, completedIds);
-		result.RemovedCatalogEntryCount = catalog.RemovedCatalogEntryCount;
-		result.RemovedTimelineEntryCount = catalog.RemovedTimelineEntryCount;
-		result.CatalogBackupPath = catalog.BackupPath;
-		return result;
+		// A restored thread can have an ID in a historical repair ledger.
+		// Refresh must never replay old deletions against current data.
+		return new DesktopTaskCacheInvalidationResult();
 	}
 
 	private static HashSet<string> FindLogConfirmedMissingThreadIds(string backupPath)
@@ -235,51 +162,6 @@ internal static class ConversationIndexMaintenance
 		return result;
 	}
 
-	private static void CompleteOfficialDeletion(string codexHome, DbThread thread)
-	{
-		string temporaryRollout = ValidateMissingSessionPath(codexHome, thread);
-		string parent = Path.GetDirectoryName(temporaryRollout);
-		if (string.IsNullOrWhiteSpace(parent))
-		{
-			throw new InvalidDataException("失效会话路径没有有效的上级目录。");
-		}
-		Directory.CreateDirectory(parent);
-		Dictionary<string, object> sessionMeta = new Dictionary<string, object>
-		{
-			{ "timestamp", DateTimeOffset.UtcNow.ToString("o") },
-			{ "type", "session_meta" },
-			{ "payload", new Dictionary<string, object>
-				{
-					{ "id", thread.Id },
-					{ "timestamp", DateTimeOffset.UtcNow.ToString("o") },
-					{ "cwd", string.IsNullOrWhiteSpace(thread.Cwd) ? codexHome : thread.Cwd },
-					{ "originator", "codex-desktop" },
-					{ "cli_version", "sidebar-remnant-repair" },
-					{ "source", "vscode" },
-					{ "model_provider", "openai" }
-				}
-			}
-		};
-		bool created = false;
-		try
-		{
-			using (FileStream stream = new FileStream(temporaryRollout, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-			using (StreamWriter writer = new StreamWriter(stream, new UTF8Encoding(encoderShouldEmitUTF8Identifier: false)))
-			{
-				writer.WriteLine(JsonSerialization.NewSerializer().Serialize(sessionMeta));
-			}
-			created = true;
-			CodexAppServerThreadDeletion.DeleteThread(codexHome, thread.Id);
-		}
-		finally
-		{
-			if (created && File.Exists(temporaryRollout))
-			{
-				File.Delete(temporaryRollout);
-			}
-		}
-	}
-
 	public static List<LiveDescendantInfo> FindLiveDescendants(string codexHome, IEnumerable<string> rootThreadIds)
 	{
 		string[] roots = (rootThreadIds ?? Enumerable.Empty<string>()).Where((string id) => !string.IsNullOrWhiteSpace(id)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
@@ -295,7 +177,7 @@ internal static class ConversationIndexMaintenance
 		foreach (DbThread thread in byId.Values)
 		{
 			string parentId = thread.ParentThreadId;
-			string rolloutPath = TextHelpers.StripExtendedPrefix(thread.RolloutPath);
+			string rolloutPath = RolloutStorage.ResolveExistingPath(TextHelpers.StripExtendedPrefix(thread.RolloutPath));
 			if (!string.IsNullOrWhiteSpace(rolloutPath) && File.Exists(rolloutPath))
 			{
 				try
@@ -344,7 +226,7 @@ internal static class ConversationIndexMaintenance
 				{
 					continue;
 				}
-				string rolloutPath = TextHelpers.StripExtendedPrefix(thread.RolloutPath);
+				string rolloutPath = RolloutStorage.ResolveExistingPath(TextHelpers.StripExtendedPrefix(thread.RolloutPath));
 				if (string.IsNullOrWhiteSpace(rolloutPath) || !File.Exists(rolloutPath))
 				{
 					continue;
@@ -379,7 +261,7 @@ internal static class ConversationIndexMaintenance
 
 	private static ThreadHeaderInfo ReadThreadHeader(string path)
 	{
-		using FileStream stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+		using Stream stream = RolloutStorage.OpenRead(path);
 		using StreamReader reader = new StreamReader(stream, Encoding.UTF8, detectEncodingFromByteOrderMarks: true, 8192);
 		string firstLine = reader.ReadLine();
 		Dictionary<string, object> root = string.IsNullOrWhiteSpace(firstLine) ? null : JsonSerialization.NewSerializer().DeserializeObject(firstLine) as Dictionary<string, object>;
@@ -490,7 +372,7 @@ internal static class ConversationIndexMaintenance
 			string path = Path.GetFullPath(TextHelpers.StripExtendedPrefix(rolloutPath));
 			string sessionsRoot = Path.GetFullPath(Path.Combine(codexHome, "sessions"));
 			string archivedRoot = Path.GetFullPath(Path.Combine(codexHome, "archived_sessions"));
-			return (TextHelpers.IsWithin(path, sessionsRoot) || TextHelpers.IsWithin(path, archivedRoot)) && !File.Exists(path);
+			return (TextHelpers.IsWithin(path, sessionsRoot) || TextHelpers.IsWithin(path, archivedRoot)) && !RolloutStorage.ExistsInEitherEncoding(path);
 		}
 		catch
 		{
@@ -523,7 +405,7 @@ internal static class ConversationIndexMaintenance
 	{
 		HashSet<string> result = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 		string path = RepairLedgerPath(codexHome);
-		if (!File.Exists(path))
+		if (!RolloutStorage.ExistsInEitherEncoding(path))
 		{
 			return result;
 		}

@@ -436,3 +436,26 @@ test("permanent project deletion requires its typed folder name", async () => {
     }),
   );
 });
+
+test("read-only diagnostics never offer deletion confirmation", async () => {
+  const user = userEvent.setup(),
+    api = fakeGateway();
+  api.operate = vi.fn(
+    async () =>
+      ({
+        token: "read-only",
+        ids: [],
+        snapshotCount: 0,
+        cacheCleanup: false,
+        blocked: [],
+        diagnostic: "All history preserved",
+      }) as never,
+  );
+  render(<App gateway={api} />);
+  await screen.findByText("Codex 对话管理功能");
+  await user.click(screen.getByRole("button", { name: "设置与维护" }));
+  await user.click(screen.getByRole("button", { name: "检查修复" }));
+  await screen.findByText("All history preserved");
+  expect(screen.queryByRole("button", { name: "确认执行" })).toBeNull();
+  expect(api.operate).toHaveBeenCalledTimes(1);
+});

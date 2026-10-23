@@ -26,7 +26,7 @@ internal static class CodexDesktopProjectRegistry
 		{
 			return false;
 		}
-		Process[] processes = Process.GetProcessesByName("ChatGPT");
+		Process[] processes = new[] { "ChatGPT", "Codex", "codex-cli" }.SelectMany(Process.GetProcessesByName).ToArray();
 		try
 		{
 			return processes.Any((Process process) => !process.HasExited);

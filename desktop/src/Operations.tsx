@@ -40,6 +40,7 @@ type DeletePlan = {
   remaining: number;
 };
 type RepairPlan = {
+  diagnostic?: string;
   token: string;
   ids: string[];
   snapshotCount?: number;
@@ -309,6 +310,10 @@ export function Operations({
     } else
       void run<RepairPlan>({ action: "planRepair" }, (result) => {
         setRepairBlocked(result.blocked || []);
+        if (result.diagnostic) {
+          setLog(result.diagnostic);
+          return;
+        }
         if (
           !result.ids.length &&
           !result.snapshotCount &&

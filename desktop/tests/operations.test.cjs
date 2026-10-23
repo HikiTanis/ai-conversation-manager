@@ -128,7 +128,7 @@ for (const provider of ['codex', 'dsh']) test(`${provider}: project deletion pre
   assert.deepEqual(snapshot(home), before); assert.ok(fs.existsSync(project.path));
 });
 
-test('Codex repair plan preserves live descendants and fingerprints legacy snapshots', () => {
+test('Codex diagnostic preserves live descendants, legacy snapshots', () => {
   const home = path.join(work, 'repair-plan'); fs.cpSync(source.codex, home, { recursive: true });
   const args = { provider: 'codex', home };
   const project = success({ ...args, action: 'list' }, true).projects[0];
@@ -143,8 +143,25 @@ test('Codex repair plan preserves live descendants and fingerprints legacy snaps
   const snapshotFile = main.path + '.ccm-txn-bak-1'; fs.copyFileSync(main.path, snapshotFile);
   const before = snapshot(home), plan = success({ ...args, action: 'planRepair' });
   assert.deepEqual(plan.ids, []); assert.equal(plan.blocked.length, 1); assert.equal(plan.blocked[0].id, child.id);
-  assert.equal(plan.snapshotCount, 1); assert.deepEqual(snapshot(home), before);
+  assert.equal(plan.snapshotCount, 0); assert.match(plan.diagnostic, /preserved/i); assert.deepEqual(snapshot(home), before);
   fs.appendFileSync(snapshotFile, '\n');
   const changed = snapshot(home), rejected = request({ ...args, action: 'repair', token: plan.token });
-  assert.equal(rejected.ok, false); assert.match(rejected.error, /scope changed/i); assert.deepEqual(snapshot(home), changed);
+  assert.equal(rejected.ok, true); assert.match(rejected.result.message, /preserved/i); assert.deepEqual(snapshot(home), changed);
+});
+
+test('Codex diagnostics preserve compressed rollouts with plain index paths', () => {
+  const home = path.join(work, 'repair-compressed'); fs.cpSync(source.codex, home, { recursive: true });
+  const args = {provider: 'codex', home};
+  const project = success({...args, action:'list'}, true).projects[0];
+  compressSessions(home);
+  const {DatabaseSync} = require('node:sqlite');
+  const db = new DatabaseSync(path.join(home, 'state_5.sqlite'));
+  db.exec('create table threads(id text primary key, rollout_path text, cwd text, title text, source text, parent_thread_id text)');
+  for (const s of project.sessions) db.prepare('insert into threads values(?,?,?,?,?,?)').run(s.id, s.path, project.path, s.title, 'cli', s.parentId || '');
+  db.close();
+  const before = snapshot(home);
+  const plan = success({...args, action:'planRepair'});
+  assert.match(plan.diagnostic, /Found 0 /);
+  success({...args, action:'repair', token:'old-deletion-plan'});
+  assert.deepEqual(snapshot(home), before);
 });

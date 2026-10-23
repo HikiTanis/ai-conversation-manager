@@ -32,12 +32,11 @@ internal static class ConversationStorage
 		string datedDirectory = Path.Combine(trashRoot, DateTime.Now.ToString("yyyy-MM-dd"));
 		Directory.CreateDirectory(datedDirectory);
 		List<StagedTrashCopy> stagedCopies = new List<StagedTrashCopy>();
-		bool officialDeletionSucceeded = false;
 		try
 		{
 			foreach (DeletionTarget target in targets)
 			{
-				string fileName = DateTime.Now.ToString("HHmmssfff") + "-" + Path.GetFileName(target.SourcePath);
+				string fileName = Guid.NewGuid().ToString("N") + (RolloutStorage.IsCompressed(target.SourcePath) ? ".jsonl.zst" : ".jsonl");
 				string backupPath = UniqueFilePath(datedDirectory, fileName);
 				if (!TextHelpers.IsWithin(backupPath, trashRoot))
 				{
@@ -51,20 +50,17 @@ internal static class ConversationStorage
 				};
 				staged.Metadata = CreateTrashMetadata(target, staged.BackupPath);
 				File.Copy(target.SourcePath, staged.BackupPath);
+				if (ProjectPayloadService.Sha256File(target.SourcePath) != ProjectPayloadService.Sha256File(staged.BackupPath))
+					throw new IOException("会话在备份过程中发生变化，未执行删除。");
 				stagedCopies.Add(staged);
 				WriteMetadata(staged.SidecarPath, staged.Metadata);
 			}
 			OfficialThreadDeletionResult officialDeletion = CodexAppServerThreadDeletion.DeleteThread(codexHome, session.ThreadId);
-			officialDeletionSucceeded = officialDeletion.Succeeded;
 			foreach (StagedTrashCopy staged in stagedCopies)
 			{
 				staged.Metadata["official_delete"] = true;
 				staged.Metadata["official_delete_protocol"] = "thread/delete";
 				WriteMetadata(staged.SidecarPath, staged.Metadata);
-			}
-			foreach (DeletionTarget target in targets)
-			{
-				ImportSnapshotMaintenance.DeleteForThread(codexHome, target.Session.ThreadId, target.SourcePath);
 			}
 			ThreadIndexRemovalResult indexRemoval;
 			DesktopCatalogRemovalResult catalogRemoval;
@@ -91,30 +87,11 @@ internal static class ConversationStorage
 		}
 		catch (Exception operationError)
 		{
-			if (!officialDeletionSucceeded)
-			{
-				try
-				{
-					foreach (StagedTrashCopy staged in stagedCopies)
-					{
-						if (File.Exists(staged.SidecarPath))
-						{
-							File.Delete(staged.SidecarPath);
-						}
-						if (File.Exists(staged.BackupPath))
-						{
-							File.Delete(staged.BackupPath);
-						}
-					}
-					TryDeleteEmptyDirectory(datedDirectory);
-				}
-				catch (Exception cleanupError)
-				{
-					throw new AggregateException("Codex 官方删除没有成功，原会话未删除；但临时回收站副本清理失败，请检查：\n" + datedDirectory, operationError, cleanupError);
-				}
-			}
-			throw;
+			// Failure/timeout does not prove thread/delete had no side effects.
+			// Never discard recovery copies, including when staging itself failed.
+			throw new InvalidOperationException("删除未完成或结果不明确。所有已创建的回收站副本均已保留，请刷新并核对后恢复。备份目录：\n" + datedDirectory, operationError);
 		}
+
 		StagedTrashCopy rootCopy = stagedCopies.First((StagedTrashCopy staged) => string.Equals(staged.Target.Session.ThreadId, session.ThreadId, StringComparison.OrdinalIgnoreCase));
 		return new DeletedSessionResult
 		{
@@ -137,10 +114,6 @@ internal static class ConversationStorage
 		List<DeletionTarget> targets = PrepareDeletionTargets(session, ResolveProjectPath(session, null), affectedSessions);
 		CodexDesktopProjectRegistry.EnsureImportCanWrite(codexHome);
 		CodexAppServerThreadDeletion.DeleteThread(codexHome, session.ThreadId);
-		foreach (DeletionTarget target in targets)
-		{
-			ImportSnapshotMaintenance.DeleteForThread(codexHome, target.Session.ThreadId, target.SourcePath);
-		}
 		RemoveThreadVisibility(codexHome, targets.Select((DeletionTarget target) => target.Session.ThreadId), out _, out _, out _);
 		foreach (DeletionTarget target in targets)
 		{
@@ -249,21 +222,25 @@ internal static class ConversationStorage
 		string codexHome = CodexCatalog.ResolveCodexHome();
 		CodexDesktopProjectRegistry.EnsureImportCanWrite(codexHome);
 		string originalPath = ValidateSessionTargetPath(item.OriginalPath);
-		if (File.Exists(originalPath))
+		if (RolloutStorage.ExistsInEitherEncoding(originalPath))
 		{
 			throw new IOException("原位置已存在同名会话，已拒绝覆盖：\n" + originalPath);
 		}
+		EnsureRestoreIdentityAvailable(codexHome, item.ThreadId);
 		string parent = Path.GetDirectoryName(originalPath);
 		if (string.IsNullOrWhiteSpace(parent))
 		{
 			throw new InvalidOperationException("原会话路径无效。");
 		}
+		var restoredMetadata = TargetedThreadIndexer.ReadMetadataForIndexing(backupPath, item.Title, item.Preview);
+		if (!string.Equals(restoredMetadata.Id, item.ThreadId, StringComparison.OrdinalIgnoreCase))
+			throw new InvalidDataException("回收站备份的会话 ID 与记录不一致，未恢复。");
 		Directory.CreateDirectory(parent);
 		File.Move(backupPath, originalPath);
 		try
 		{
 			SessionInfo session = SessionFromTrash(item, originalPath);
-			ThreadIndexMetadata metadata = CreateIndexMetadata(session, originalPath);
+			ThreadIndexMetadata metadata = restoredMetadata;
 			RestoreThreadVisibility(codexHome, metadata, originalPath);
 			if (File.Exists(sidecarPath))
 			{
@@ -297,8 +274,6 @@ internal static class ConversationStorage
 		}
 		string codexHome = CodexCatalog.ResolveCodexHome();
 		CodexDesktopProjectRegistry.EnsureImportCanWrite(codexHome);
-		ImportSnapshotMaintenance.DeleteForThread(codexHome, item.ThreadId, item.OriginalPath);
-		RemoveThreadVisibility(codexHome, item.ThreadId, out _, out _, out _);
 		string backupPath = ValidateTrashPath(item.BackupPath);
 		string sidecarPath = ValidateTrashPath(item.SidecarPath);
 		if (File.Exists(backupPath))
@@ -488,6 +463,36 @@ internal static class ConversationStorage
 				throw new InvalidOperationException("安全校验失败：受影响会话不是所选主会话的子代理：\n" + item.ThreadId);
 			}
 		}
+		// thread/delete cascades through the native graph. Verify the complete graph
+		// against both disk and the index before allowing that call.
+		string home = CodexCatalog.ResolveCodexHome();
+		var parents = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+		var paths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+		Action<string, string> addParent = (id, parentId) => {
+			if (string.IsNullOrWhiteSpace(parentId)) return;
+			if (!parents.TryGetValue(id, out var set)) parents[id] = set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+			set.Add(parentId);
+		};
+		foreach (string file in RolloutStorage.EnumerateStrict(home))
+		{
+			var metadata = TargetedThreadIndexer.ReadMetadataForIndexing(file, "", "");
+			if (paths.ContainsKey(metadata.Id)) throw new IOException("发现重复会话 ID，未执行删除：" + metadata.Id);
+			paths.Add(metadata.Id, file);
+			addParent(metadata.Id, metadata.ParentThreadId);
+		}
+		string database = WinSqliteMaintenance.FindActiveDatabase(home);
+		if (!string.IsNullOrWhiteSpace(database))
+			foreach (var thread in WinSqliteReader.ReadThreads(database)) addParent(thread.Id, thread.ParentThreadId);
+		var closure = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { root.ThreadId };
+		bool changed;
+		do { changed = false; foreach (var pair in parents) if (pair.Value.Any(closure.Contains)) changed |= closure.Add(pair.Key); } while (changed);
+		if (!closure.SetEquals(sessions.Keys)) throw new IOException("原生会话关联范围与预览不一致，未执行删除；请刷新并保留未识别记录。");
+		foreach (var item in sessions.Values)
+		{
+			if (!paths.TryGetValue(item.ThreadId, out string actual) ||
+				!string.Equals(TextHelpers.CanonicalPath(actual), TextHelpers.CanonicalPath(ResolveValidatedSessionPath(item)), StringComparison.OrdinalIgnoreCase))
+				throw new IOException("会话身份或路径发生变化，未执行删除：" + item.ThreadId);
+		}
 		List<SessionInfo> ordered = new List<SessionInfo> { root };
 		ordered.AddRange(sessions.Values.Where((SessionInfo item) => !string.Equals(item.ThreadId, root.ThreadId, StringComparison.OrdinalIgnoreCase)).OrderBy((SessionInfo item) => item.UpdatedDate));
 		return ordered.Select((SessionInfo item) => new DeletionTarget
@@ -523,6 +528,23 @@ internal static class ConversationStorage
 			{ "parent_thread_id", session.ParentThreadId ?? string.Empty },
 			{ "official_delete", false }
 		};
+	}
+
+	private static void EnsureRestoreIdentityAvailable(string home, string id)
+	{
+		if (string.IsNullOrWhiteSpace(id)) throw new InvalidDataException("恢复记录缺少会话 ID。");
+		string database = WinSqliteMaintenance.FindActiveDatabase(home);
+		if (string.IsNullOrWhiteSpace(database)) throw new InvalidDataException("缺少 Codex 索引，请先初始化目标目录。");
+		if (WinSqliteReader.ReadThreads(database).Any(t => string.Equals(t.Id, id, StringComparison.OrdinalIgnoreCase)))
+			throw new IOException("同 ID 会话已存在于索引中，拒绝覆盖：" + id);
+		// Strict enumeration and parsing: an unreadable directory or rollout cannot
+		// establish that an identity is absent. Do not use the best-effort UI scan.
+		foreach (string file in RolloutStorage.EnumerateStrict(home))
+		{
+			var metadata = TargetedThreadIndexer.ReadMetadataForIndexing(file, "", "");
+			if (string.Equals(metadata.Id, id, StringComparison.OrdinalIgnoreCase))
+				throw new IOException("同 ID 会话文件已存在，拒绝覆盖：" + file);
+		}
 	}
 
 	private static string ValidateSessionTargetPath(string path)

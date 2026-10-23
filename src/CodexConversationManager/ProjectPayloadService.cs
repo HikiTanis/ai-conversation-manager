@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -174,7 +174,7 @@ internal static class ProjectPayloadService
 		string stageRoot = Path.Combine(temporaryRoot, "codex-project-stage-" + Guid.NewGuid().ToString("N"));
 		Directory.CreateDirectory(stageRoot);
 		string backupPath = string.Empty;
-		HashSet<string> backedExistingFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		Dictionary<string, string> backedExistingFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 		int created = 0;
 		int overwritten = 0;
 		int skipped = 0;
@@ -218,11 +218,11 @@ internal static class ProjectPayloadService
 				{
 					throw new IOException("目标项目目录不再为空，已停止还原：\n" + destination);
 				}
-				if (exists && conflictMode == ProjectFileConflictMode.OverwriteWithBackup && !backedExistingFiles.Contains(relative))
+				if (exists && conflictMode == ProjectFileConflictMode.OverwriteWithBackup && (!backedExistingFiles.TryGetValue(relative, out string backedHash) || backedHash != Sha256File(destination)))
 				{
 					throw new IOException("安全检查后出现了新的同名文件，为避免无备份覆盖，已停止还原：\n" + destination);
 				}
-				CopyFileAtomically(stagedFile, destination, exists);
+				CopyFileAtomically(stagedFile, destination, exists, exists ? backedExistingFiles[relative] : null);
 				if (exists)
 				{
 					overwritten++;
@@ -553,9 +553,9 @@ internal static class ProjectPayloadService
 		}
 	}
 
-	private static string CreateConflictBackup(string stageRoot, string targetRoot, ProjectPayloadInfo payload, out HashSet<string> backedFiles)
+	private static string CreateConflictBackup(string stageRoot, string targetRoot, ProjectPayloadInfo payload, out Dictionary<string, string> backedFiles)
 	{
-		backedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+		backedFiles = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
 		string backupRoot = Path.Combine(BackendContext.Home, "conversation-migrator-project-backups", DateTime.Now.ToString("yyyy-MM-dd"));
 		Directory.CreateDirectory(backupRoot);
 		string baseName = TextHelpers.SafeFileName(string.IsNullOrWhiteSpace(payload.root_name) ? "project" : payload.root_name);
@@ -576,7 +576,7 @@ internal static class ProjectPayloadService
 						using Stream destination = entry.Open();
 						using FileStream source = new FileStream(existing, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
 						source.CopyTo(destination);
-						backedFiles.Add(relative);
+						backedFiles.Add(relative, string.Empty);
 					}
 				}
 				Dictionary<string, object> restoreInfo = new Dictionary<string, object>
@@ -590,6 +590,13 @@ internal static class ProjectPayloadService
 				using StreamWriter writer = new StreamWriter(infoEntry.Open(), new UTF8Encoding(encoderShouldEmitUTF8Identifier: false));
 				writer.Write(JsonSerialization.NewSerializer().Serialize(restoreInfo));
 			}
+			using (ZipArchive verified = ZipFile.OpenRead(temporaryBackup))
+				foreach (string relative in backedFiles.Keys.ToArray())
+				{
+					using Stream input = verified.GetEntry(ToEntryName(relative)).Open();
+					using SHA256 sha = SHA256.Create();
+					backedFiles[relative] = BitConverter.ToString(sha.ComputeHash(input)).Replace("-", "").ToLowerInvariant();
+				}
 			File.Move(temporaryBackup, backupPath);
 			return backupPath;
 		}
@@ -609,7 +616,9 @@ internal static class ProjectPayloadService
 		}
 	}
 
-	private static void CopyFileAtomically(string source, string destination, bool overwrite)
+	internal static Action<string> BeforeReplaceForTest { get; set; }
+
+	internal static void CopyFileAtomically(string source, string destination, bool overwrite, string backedHash)
 	{
 		string temporary = destination + ".codex-import-" + Guid.NewGuid().ToString("N") + ".tmp";
 		try
@@ -621,7 +630,13 @@ internal static class ProjectPayloadService
 				{
 					throw new IOException("准备覆盖的目标文件在还原期间消失，已停止写入：\n" + destination);
 				}
-				File.Replace(temporary, destination, null, ignoreMetadataErrors: true);
+				// Capture the actual replaced bytes, including edits made after the ZIP backup.
+                string captured = Path.Combine(Path.GetDirectoryName(destination), Guid.NewGuid().ToString("N") + ".codex-preserved");
+                BeforeReplaceForTest?.Invoke(destination);
+                File.Replace(temporary, destination, captured, ignoreMetadataErrors: true);
+                if (Sha256File(captured) != backedHash)
+                    throw new IOException("目标文件在备份后发生变化。被替换的最新内容已保留，请手动恢复：\n" + captured);
+                File.Delete(captured);
 			}
 			else
 			{

@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -35,6 +35,8 @@ internal sealed class NativeImportTransaction
 
 	private readonly HashSet<string> trackedImportedFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+	private readonly Dictionary<string, string> installedHashes = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+
 	private bool completed;
 
 	private NativeImportTransaction(string codexHome)
@@ -65,7 +67,7 @@ internal sealed class NativeImportTransaction
 		foreach (string candidate in candidates ?? Enumerable.Empty<string>())
 		{
 			string fullPath = Path.GetFullPath(candidate);
-			if (!current.Contains(fullPath) || baselineSessionFiles.Contains(fullPath))
+			if (!current.Contains(fullPath))
 			{
 				continue;
 			}
@@ -80,6 +82,7 @@ internal sealed class NativeImportTransaction
 			if (belongsToImport)
 			{
 				trackedImportedFiles.Add(fullPath);
+				installedHashes[fullPath] = ProjectPayloadService.Sha256File(fullPath);
 			}
 		}
 	}
@@ -90,7 +93,8 @@ internal sealed class NativeImportTransaction
 		{
 			return 0;
 		}
-		List<string> created = ImportSnapshotMaintenance.CreatedSince(codexHome, baseline);
+		List<string> created = ImportSnapshotMaintenance.CreatedSince(codexHome, baseline)
+            .Where(path => trackedImportedFiles.Contains(ImportSnapshotMaintenance.ActivePathForBackup(path))).ToList();
 		if (created.Count == 0)
 		{
 			completed = true;
@@ -154,11 +158,14 @@ internal sealed class NativeImportTransaction
 			return result;
 		}
 		List<IGrouping<string, string>> groups = ImportSnapshotMaintenance.CreatedSince(codexHome, baseline)
-			.GroupBy(ImportSnapshotMaintenance.ActivePathForBackup, StringComparer.OrdinalIgnoreCase)
+			.Where(path => trackedImportedFiles.Contains(ImportSnapshotMaintenance.ActivePathForBackup(path)))
+            .GroupBy(ImportSnapshotMaintenance.ActivePathForBackup, StringComparer.OrdinalIgnoreCase)
 			.ToList();
 		foreach (IGrouping<string, string> group in groups)
 		{
 			string original = group.OrderBy(ImportSnapshotMaintenance.BackupOrdinal).First();
+			if (File.Exists(group.Key) && (!installedHashes.TryGetValue(group.Key, out string expected) || ProjectPayloadService.Sha256File(group.Key) != expected))
+				throw new IOException("当前会话不是本次导入写入的版本，拒绝回滚覆盖；已保留恢复快照：" + group.Key);
 			ImportSnapshotMaintenance.RestoreSnapshotAtomically(original, group.Key);
 			result.RestoredCount++;
 			foreach (string backup in group)
@@ -174,6 +181,8 @@ internal sealed class NativeImportTransaction
 		{
 			if (File.Exists(path) && !baselineSessionFiles.Contains(path))
 			{
+				if (!installedHashes.TryGetValue(path, out string expected) || ProjectPayloadService.Sha256File(path) != expected)
+					throw new IOException("新会话已有后续内容，拒绝回滚删除：" + path);
 				File.Delete(path);
 				result.RemovedImportedCount++;
 			}
@@ -287,15 +296,10 @@ internal static class ImportSnapshotMaintenance
 			{
 				continue;
 			}
-			MoveOneLegacyBackupToTrash(ordered[0], group.Key);
-			result.MovedToTrashCount++;
-			foreach (string redundant in ordered.Skip(1))
+			foreach (string snapshot in ordered)
 			{
-				if (File.Exists(redundant))
-				{
-					File.Delete(redundant);
-					result.RedundantDeletedCount++;
-				}
+				MoveOneLegacyBackupToTrash(snapshot, group.Key);
+				result.MovedToTrashCount++;
 			}
 		}
 		return result;
@@ -432,8 +436,7 @@ internal static class ImportSnapshotMaintenance
 		string trashRoot = ConversationStorage.TrashRoot;
 		string datedDirectory = Path.Combine(trashRoot, DateTime.Now.ToString("yyyy-MM-dd"));
 		Directory.CreateDirectory(datedDirectory);
-		string snapshotLabel = legacySnapshot ? "legacy-snapshot-" : "import-snapshot-";
-		string destination = UniquePath(datedDirectory, DateTime.Now.ToString("HHmmssfff") + "-" + snapshotLabel + Path.GetFileName(activePath));
+		string destination = UniquePath(datedDirectory, Guid.NewGuid().ToString("N") + (RolloutStorage.IsCompressed(activePath) ? ".jsonl.zst" : ".jsonl"));
 		string sidecar = destination + ".delete-info.json";
 		File.Move(sourcePath, destination);
 		try
@@ -451,6 +454,7 @@ internal static class ImportSnapshotMaintenance
 			Dictionary<string, object> metadata = new Dictionary<string, object>
 			{
 				{ "schema", 2 },
+				{ "compressed", RolloutStorage.IsCompressed(activePath) },
 				{ "thread_id", threadId ?? string.Empty },
 				{ "title", (legacySnapshot ? "旧版安全快照 · " : "未完成导入安全快照 · ") + title },
 				{ "original_path", activePath },

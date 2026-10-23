@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -104,6 +104,7 @@ internal sealed class NativeBundleImportResult
 
 internal static class NativeBundleImporter
 {
+	internal static Action<string> BeforeInstallForTest { get; set; }
 	internal const string FormatVersion = "codex-sync-bundle-v1";
 
 	internal const int MaximumMetadataBytes = 16 * 1024 * 1024;
@@ -176,6 +177,8 @@ internal static class NativeBundleImporter
 		public long ExistingLength { get; set; }
 
 		public long ExistingLastWriteTicks { get; set; }
+
+		public string ExistingHash { get; set; }
 	}
 
 	private sealed class AppliedChange
@@ -185,6 +188,8 @@ internal static class NativeBundleImporter
 		public string BackupPath { get; set; }
 
 		public bool Created { get; set; }
+
+		public string WrittenHash { get; set; }
 	}
 
 	private enum PrefixComparison
@@ -856,7 +861,8 @@ internal static class NativeBundleImporter
 				DestinationPath = destination,
 				Status = status,
 				ExistingLength = existing?.Length ?? -1L,
-				ExistingLastWriteTicks = existing?.LastWriteTimeUtc.Ticks ?? 0L
+				ExistingLastWriteTicks = existing?.LastWriteTimeUtc.Ticks ?? 0L,
+				ExistingHash = existing == null ? null : ProjectPayloadService.Sha256File(destination)
 			});
 		}
 		return result;
@@ -872,107 +878,28 @@ internal static class NativeBundleImporter
 			id => id,
 			_ => new List<string>(),
 			StringComparer.OrdinalIgnoreCase);
-		foreach (string folder in new[] { "sessions", "archived_sessions" })
+		foreach (string path in RolloutStorage.EnumerateStrict(codexHome))
 		{
-			string root = Path.Combine(codexHome, folder);
-			if (!Directory.Exists(root))
-			{
-				continue;
-			}
-			foreach (string path in EnumerateSessionFiles(root))
-			{
-				string embedded = ReadThreadId(path);
-				if (wanted.Contains(embedded))
-				{
-					result[embedded].Add(Path.GetFullPath(path));
-				}
-			}
+			string embedded = ReadThreadId(path);
+			if (wanted.Contains(embedded)) result[embedded].Add(Path.GetFullPath(path));
 		}
-		try
-		{
-			string database = WinSqliteMaintenance.FindActiveDatabase(codexHome);
-			if (!string.IsNullOrWhiteSpace(database) && File.Exists(database))
+		string database = WinSqliteMaintenance.FindActiveDatabase(codexHome);
+		if (!string.IsNullOrWhiteSpace(database))
+			foreach (DbThread thread in WinSqliteReader.ReadThreads(database).Where(t => wanted.Contains(t.Id)))
 			{
-				foreach (DbThread thread in WinSqliteReader.ReadThreads(database))
-				{
-					if (thread != null && wanted.Contains(thread.Id) && !string.IsNullOrWhiteSpace(thread.RolloutPath))
-					{
-						string indexedPath = Path.GetFullPath(TextHelpers.StripExtendedPrefix(thread.RolloutPath));
-						if (File.Exists(indexedPath))
-						{
-							result[thread.Id].Add(indexedPath);
-						}
-					}
-				}
+				string indexedPath = RolloutStorage.ResolveExistingPath(TextHelpers.StripExtendedPrefix(thread.RolloutPath));
+				if (string.IsNullOrWhiteSpace(indexedPath) || !File.Exists(indexedPath))
+					throw new IOException("目标索引中的会话文件缺失，拒绝覆盖该身份；请先恢复或选择独立副本：" + thread.Id);
+				if (!string.Equals(ReadThreadId(indexedPath), thread.Id, StringComparison.OrdinalIgnoreCase))
+					throw new InvalidDataException("索引路径与会话 ID 不一致：" + thread.Id);
+				result[thread.Id].Add(Path.GetFullPath(indexedPath));
 			}
-		}
-		catch
-		{
-			// Files remain authoritative when the optional desktop index is busy or old.
-		}
+
 		foreach (string id in wanted)
 		{
 			result[id] = result[id].Distinct(StringComparer.OrdinalIgnoreCase).ToList();
 		}
 		return result;
-	}
-
-	private static IEnumerable<string> EnumerateSessionFiles(string root)
-	{
-		Stack<string> pending = new Stack<string>();
-		pending.Push(Path.GetFullPath(root));
-		while (pending.Count > 0)
-		{
-			string directory = pending.Pop();
-			string[] files;
-			try
-			{
-				files = Directory.GetFiles(directory);
-			}
-			catch
-			{
-				files = Array.Empty<string>();
-			}
-			foreach (string file in files)
-			{
-				bool include = false;
-				try
-				{
-					include = (File.GetAttributes(file) & FileAttributes.ReparsePoint) == 0 &&
-						(file.EndsWith(".jsonl", StringComparison.OrdinalIgnoreCase) ||
-						 file.EndsWith(".jsonl.zst", StringComparison.OrdinalIgnoreCase));
-				}
-				catch
-				{
-				}
-				if (include)
-				{
-					yield return file;
-				}
-			}
-			string[] children;
-			try
-			{
-				children = Directory.GetDirectories(directory);
-			}
-			catch
-			{
-				children = Array.Empty<string>();
-			}
-			foreach (string child in children)
-			{
-				try
-				{
-					if ((File.GetAttributes(child) & FileAttributes.ReparsePoint) == 0)
-					{
-						pending.Push(child);
-					}
-				}
-				catch
-				{
-				}
-			}
-		}
 	}
 
 	private static string ResolveDestination(
@@ -1205,7 +1132,8 @@ internal static class NativeBundleImporter
 				{
 					FileInfo current = new FileInfo(plan.DestinationPath);
 					if (current.Length != plan.ExistingLength ||
-						current.LastWriteTimeUtc.Ticks != plan.ExistingLastWriteTicks)
+						current.LastWriteTimeUtc.Ticks != plan.ExistingLastWriteTicks ||
+						ProjectPayloadService.Sha256File(plan.DestinationPath) != plan.ExistingHash)
 					{
 						throw new IOException(
 							"安全检查后原会话文件发生变化，已停止导入：" +
@@ -1226,11 +1154,15 @@ internal static class NativeBundleImporter
 						plan.DestinationPath);
 					plan.BackupPath = change.BackupPath;
 				}
-				changes.Add(change);
-				CopyAtomically(
+				change.WrittenHash = CopyAtomically(
 					plan.Source.StagedPath,
 					plan.DestinationPath,
-					existsNow);
+					existsNow, change.BackupPath);
+				// Register ownership only after installation succeeded. A failed Move
+				// must never make rollback delete a file created by another writer.
+				changes.Add(change);
+                if (existsNow && ProjectPayloadService.Sha256File(change.BackupPath) != plan.ExistingHash)
+                    throw new IOException("原会话在原子替换前发生变化，已停止导入并恢复最新内容：" + plan.DestinationPath);
 				ApplyTimestamps(
 					plan.DestinationPath,
 					plan.Source.CreatedAtUtc,
@@ -1272,10 +1204,10 @@ internal static class NativeBundleImporter
 		return backup;
 	}
 
-	private static void CopyAtomically(
+	private static string CopyAtomically(
 		string source,
 		string destination,
-		bool overwrite)
+		bool overwrite, string backupPath)
 	{
 		// Keep the atomic staging file on the same volume, but do not append
 		// another long suffix to a rollout filename near Windows MAX_PATH.
@@ -1285,18 +1217,21 @@ internal static class NativeBundleImporter
 		{
 			if (RolloutStorage.IsCompressed(destination)) RolloutStorage.EncodeFile(source, temporary);
 			else File.Copy(source, temporary, overwrite: false);
+			string writtenHash = ProjectPayloadService.Sha256File(temporary);
+			BeforeInstallForTest?.Invoke(destination);
 			if (overwrite)
 			{
 				File.Replace(
 					temporary,
 					destination,
-					null,
+					backupPath,
 					ignoreMetadataErrors: true);
 			}
 			else
 			{
 				File.Move(temporary, destination);
 			}
+			return writtenHash;
 		}
 		finally
 		{
@@ -1312,6 +1247,8 @@ internal static class NativeBundleImporter
 		{
 			try
 			{
+				if (File.Exists(change.DestinationPath) && ProjectPayloadService.Sha256File(change.DestinationPath) != change.WrittenHash)
+					throw new IOException("导入后会话被其他程序修改，已保留当前文件和回滚备份：" + change.DestinationPath);
 				if (change.Created)
 				{
 					if (File.Exists(change.DestinationPath))
@@ -1322,10 +1259,7 @@ internal static class NativeBundleImporter
 				else if (!string.IsNullOrWhiteSpace(change.BackupPath) &&
 					File.Exists(change.BackupPath))
 				{
-					File.Copy(
-						change.BackupPath,
-						change.DestinationPath,
-						overwrite: true);
+					ImportSnapshotMaintenance.RestoreSnapshotAtomically(change.BackupPath, change.DestinationPath);
 				}
 				if (!string.IsNullOrWhiteSpace(change.BackupPath) &&
 					File.Exists(change.BackupPath))
@@ -1655,29 +1589,15 @@ internal static class NativeBundleImporter
 
 	private static string ReadThreadId(string path)
 	{
-		try
+		using Stream input = RolloutStorage.OpenRead(path);
+		ReadFirstLine(input, out byte[] line, out _, out _);
+		var root = JsonSerialization.NewSerializer().DeserializeObject(DecodeUtf8(line)) as Dictionary<string, object>;
+		if (root != null && Value(root, "type") == "session_meta" && root.TryGetValue("payload", out object value) && value is Dictionary<string, object> payload)
 		{
-			using Stream input = RolloutStorage.OpenRead(path);
-			ReadFirstLine(input, out byte[] line, out _, out _);
-			Dictionary<string, object> root =
-				JsonSerialization.NewSerializer().DeserializeObject(DecodeUtf8(line))
-				as Dictionary<string, object>;
-			if (root != null &&
-				root.TryGetValue("payload", out object value) &&
-				value is Dictionary<string, object> payload)
-			{
-				string id = Value(payload, "id");
-				if (string.IsNullOrWhiteSpace(id))
-				{
-					id = Value(payload, "thread_id");
-				}
-				return string.IsNullOrWhiteSpace(id) ? Value(payload, "session_id") : id;
-			}
+			string id = ConversationLineage.ResolveCurrentThreadId(payload, string.Empty);
+			if (Guid.TryParse(id, out _)) return id;
 		}
-		catch
-		{
-		}
-		return string.Empty;
+		throw new InvalidDataException("无法验证现有会话身份，已停止导入：" + path);
 	}
 
 	private static string IdFromFileName(string path)
