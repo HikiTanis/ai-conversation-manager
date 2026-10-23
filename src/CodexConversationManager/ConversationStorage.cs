@@ -55,6 +55,7 @@ internal static class ConversationStorage
 				stagedCopies.Add(staged);
 				WriteMetadata(staged.SidecarPath, staged.Metadata);
 			}
+            LinkFragmentBackups(stagedCopies);
 			OfficialThreadDeletionResult officialDeletion = CodexAppServerThreadDeletion.DeleteThread(codexHome, session.ThreadId);
 			foreach (StagedTrashCopy staged in stagedCopies)
 			{
@@ -99,7 +100,7 @@ internal static class ConversationStorage
 			BackupPath = rootCopy.BackupPath,
 			BackupPaths = stagedCopies.Select((StagedTrashCopy staged) => staged.BackupPath).ToList(),
 			PermanentlyDeleted = false,
-			AffectedConversationCount = targets.Count
+			AffectedConversationCount = targets.Select(t => t.Session.ThreadId).Distinct(StringComparer.OrdinalIgnoreCase).Count()
 		};
 	}
 
@@ -131,7 +132,7 @@ internal static class ConversationStorage
 			OriginalPath = targets[0].SourcePath,
 			BackupPath = string.Empty,
 			PermanentlyDeleted = true,
-			AffectedConversationCount = targets.Count
+			AffectedConversationCount = targets.Select(t => t.Session.ThreadId).Distinct(StringComparer.OrdinalIgnoreCase).Count()
 		};
 	}
 
@@ -152,6 +153,8 @@ internal static class ConversationStorage
 					continue;
 				}
 				Dictionary<string, object> metadata = ReadMetadata(sidecarPath);
+                string primaryBackup = Value(metadata, "fragment_primary_backup");
+                if (!string.IsNullOrWhiteSpace(primaryBackup) && File.Exists(ValidateTrashPath(primaryBackup)) && File.Exists(ValidateTrashPath(primaryBackup + ".delete-info.json"))) continue;
 				string backupPath = Value(metadata, "backup_path");
 				if (string.IsNullOrWhiteSpace(backupPath))
 				{
@@ -221,6 +224,8 @@ internal static class ConversationStorage
 		}
 		string codexHome = CodexCatalog.ResolveCodexHome();
 		CodexDesktopProjectRegistry.EnsureImportCanWrite(codexHome);
+        var fragmentBackups = ReadFragmentBackups(sidecarPath);
+        if (fragmentBackups != null) { RestoreFragments(item, fragmentBackups); return; }
 		string originalPath = ValidateSessionTargetPath(item.OriginalPath);
 		if (RolloutStorage.ExistsInEitherEncoding(originalPath))
 		{
@@ -276,6 +281,14 @@ internal static class ConversationStorage
 		CodexDesktopProjectRegistry.EnsureImportCanWrite(codexHome);
 		string backupPath = ValidateTrashPath(item.BackupPath);
 		string sidecarPath = ValidateTrashPath(item.SidecarPath);
+        var fragments = ReadFragmentBackups(sidecarPath);
+        if (fragments != null) {
+            foreach (var fragment in fragments) {
+                string file = ValidateTrashPath(Value(fragment, "backup_path"));
+                if (File.Exists(file)) File.Delete(file);
+                if (File.Exists(file + ".delete-info.json")) File.Delete(file + ".delete-info.json");
+            }
+        }
 		if (File.Exists(backupPath))
 		{
 			File.Delete(backupPath);
@@ -467,7 +480,8 @@ internal static class ConversationStorage
 		// against both disk and the index before allowing that call.
 		string home = CodexCatalog.ResolveCodexHome();
 		var parents = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
-		var paths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+		var paths = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+        var historyModes = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
 		Action<string, string> addParent = (id, parentId) => {
 			if (string.IsNullOrWhiteSpace(parentId)) return;
 			if (!parents.TryGetValue(id, out var set)) parents[id] = set = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -476,8 +490,12 @@ internal static class ConversationStorage
 		foreach (string file in RolloutStorage.EnumerateStrict(home))
 		{
 			var metadata = TargetedThreadIndexer.ReadIdentityMetadata(file);
-			if (paths.ContainsKey(metadata.Id)) throw new IOException("发现重复会话 ID，未执行删除：" + metadata.Id);
-			paths.Add(metadata.Id, file);
+			if (!paths.TryGetValue(metadata.Id, out var fragments)) {
+                paths[metadata.Id] = fragments = new List<string>();
+                historyModes[metadata.Id] = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            }
+            fragments.Add(file);
+            historyModes[metadata.Id].Add(metadata.HistoryMode ?? "");
 			addParent(metadata.Id, metadata.ParentThreadId);
 		}
 		string database = WinSqliteMaintenance.FindActiveDatabase(home);
@@ -489,19 +507,146 @@ internal static class ConversationStorage
 		if (!closure.SetEquals(sessions.Keys)) throw new IOException("原生会话关联范围与预览不一致，未执行删除；请刷新并保留未识别记录。");
 		foreach (var item in sessions.Values)
 		{
-			if (!paths.TryGetValue(item.ThreadId, out string actual) ||
-				!string.Equals(TextHelpers.CanonicalPath(actual), TextHelpers.CanonicalPath(ResolveValidatedSessionPath(item)), StringComparison.OrdinalIgnoreCase))
-				throw new IOException("会话身份或路径发生变化，未执行删除：" + item.ThreadId);
+			if (!paths.TryGetValue(item.ThreadId, out var actual) ||
+                !actual.Any(path => string.Equals(TextHelpers.CanonicalPath(path), TextHelpers.CanonicalPath(ResolveValidatedSessionPath(item)), StringComparison.OrdinalIgnoreCase)))
+                throw new IOException("会话身份或路径发生变化，未执行删除：" + item.ThreadId);
+            var contentPaths = actual.Where(path => !IsRepairPlaceholder(path)).ToList();
+            bool repairPair = actual.Count == 2 && contentPaths.Count == 1 &&
+                actual.Select(path => TextHelpers.CanonicalPath(RolloutStorage.PlainPath(path))).Distinct(StringComparer.OrdinalIgnoreCase).Count() == 1;
+            if (actual.Count > 1 && !repairPair && (!historyModes[item.ThreadId].SetEquals(new[] { CodexHistoryMode.Paginated }) ||
+                actual.Select(path => TextHelpers.CanonicalPath(RolloutStorage.PlainPath(path))).Distinct(StringComparer.OrdinalIgnoreCase).Count() != actual.Count))
+                throw new IOException("选中会话存在无法确认的重复副本，未执行删除：" + item.ThreadId);
 		}
 		List<SessionInfo> ordered = new List<SessionInfo> { root };
 		ordered.AddRange(sessions.Values.Where((SessionInfo item) => !string.Equals(item.ThreadId, root.ThreadId, StringComparison.OrdinalIgnoreCase)).OrderBy((SessionInfo item) => item.UpdatedDate));
-		return ordered.Select((SessionInfo item) => new DeletionTarget
-		{
-			Session = item,
-			SourcePath = ResolveValidatedSessionPath(item),
-			ProjectPath = string.Equals(item.ThreadId, root.ThreadId, StringComparison.OrdinalIgnoreCase) ? NormalizeOptionalPath(rootProjectPath) : NormalizeOptionalPath(ResolveProjectPath(item, null))
-		}).ToList();
+		return ordered.SelectMany(item => paths[item.ThreadId]
+            .OrderBy(path => IsRepairPlaceholder(path))
+            .ThenByDescending(path => string.Equals(TextHelpers.CanonicalPath(path), TextHelpers.CanonicalPath(ResolveValidatedSessionPath(item)), StringComparison.OrdinalIgnoreCase))
+            .ThenBy(path => path, StringComparer.OrdinalIgnoreCase)
+            .Select(path => new DeletionTarget {
+                Session = item, SourcePath = path,
+                ProjectPath = string.Equals(item.ThreadId, root.ThreadId, StringComparison.OrdinalIgnoreCase) ? NormalizeOptionalPath(rootProjectPath) : NormalizeOptionalPath(ResolveProjectPath(item, null))
+            })).ToList();
 	}
+
+    private static bool IsRepairPlaceholder(string path)
+    {
+        if (RolloutStorage.IsCompressed(path) || new FileInfo(path).Length > 16384) return false;
+        using var reader = new StreamReader(path, Encoding.UTF8);
+        string line = reader.ReadLine();
+        if (string.IsNullOrWhiteSpace(line)) return false;
+        var record = JsonSerialization.NewSerializer().DeserializeObject(line) as Dictionary<string, object>;
+        if (record == null || Value(record, "type") != "session_meta" ||
+            !record.TryGetValue("payload", out var raw) || !(raw is Dictionary<string, object> payload) ||
+            Value(payload, "cli_version") != "sidebar-remnant-repair") return false;
+        while ((line = reader.ReadLine()) != null) if (!string.IsNullOrWhiteSpace(line)) return false;
+        return true;
+    }
+
+    internal static List<string> PreviewDeletionFiles(SessionInfo root, IEnumerable<SessionInfo> affected)
+    {
+        return PrepareDeletionTargets(root, ResolveProjectPath(root, null), affected).Select(t => t.SourcePath).ToList();
+    }
+
+    private static void LinkFragmentBackups(List<StagedTrashCopy> copies)
+    {
+        foreach (var group in copies.GroupBy(c => c.Target.Session.ThreadId, StringComparer.OrdinalIgnoreCase).Where(g => g.Count() > 1))
+        {
+            var primary = group.First();
+            var files = group.Select(c => new Dictionary<string, object> {
+                { "backup_path", c.BackupPath }, { "original_path", c.Target.SourcePath },
+                { "sha256", ProjectPayloadService.Sha256File(c.BackupPath) }
+            }).ToArray();
+            primary.Metadata["rollout_files"] = files;
+            primary.Metadata["size_bytes"] = group.Sum(c => new FileInfo(c.BackupPath).Length);
+            WriteMetadata(primary.SidecarPath, primary.Metadata);
+            foreach (var other in group.Skip(1)) {
+                other.Metadata["fragment_primary_backup"] = primary.BackupPath;
+                WriteMetadata(other.SidecarPath, other.Metadata);
+            }
+        }
+    }
+
+    private static List<Dictionary<string, object>> ReadFragmentBackups(string sidecar)
+    {
+        if (!File.Exists(sidecar)) return null;
+        var metadata = ReadMetadata(sidecar);
+        if (!metadata.TryGetValue("rollout_files", out object value)) return null;
+        var records = value as object[];
+        if (records == null || records.Length < 2 || records.Length > 50000) throw new InvalidDataException("分页备份清单无效。");
+        var files = new List<Dictionary<string, object>>();
+        var backups = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var originals = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (object record in records) {
+            var entry = record as Dictionary<string, object>;
+            if (entry == null) throw new InvalidDataException("分页备份条目无效。");
+            string backup = ValidateTrashPath(Value(entry, "backup_path"));
+            string original = ValidateSessionTargetPath(Value(entry, "original_path"));
+            if (!string.Equals(Path.GetDirectoryName(backup), Path.GetDirectoryName(sidecar), StringComparison.OrdinalIgnoreCase) ||
+                !backups.Add(backup) || !originals.Add(TextHelpers.CanonicalPath(original)) || Value(entry, "sha256").Length != 64)
+                throw new InvalidDataException("分页备份路径或校验值无效。");
+            files.Add(entry);
+        }
+        string primary = ValidateTrashPath(Value(metadata, "backup_path"));
+        if (!backups.Contains(primary)) throw new InvalidDataException("分页备份缺少当前入口。");
+        return files;
+    }
+
+    private static void RestoreFragments(TrashSessionInfo item, List<Dictionary<string, object>> files)
+    {
+        string home = CodexCatalog.ResolveCodexHome();
+        ThreadIndexMetadata active = null;
+        foreach (var entry in files) {
+            string backup = ValidateTrashPath(Value(entry, "backup_path"));
+            string original = ValidateSessionTargetPath(Value(entry, "original_path"));
+            if (RolloutStorage.ExistsInEitherEncoding(original)) throw new IOException("分页文件原位置已存在，拒绝覆盖：" + original);
+            for (var directory = new DirectoryInfo(Path.GetDirectoryName(original)); directory != null; directory = directory.Parent)
+                if (directory.Exists && (directory.Attributes & FileAttributes.ReparsePoint) != 0) throw new IOException("恢复路径包含链接：" + directory.FullName);
+            if (!File.Exists(backup) || ProjectPayloadService.Sha256File(backup) != Value(entry, "sha256")) throw new InvalidDataException("分页备份缺失或内容变化：" + backup);
+            var metadata = TargetedThreadIndexer.ReadIdentityMetadata(backup);
+            if (!string.Equals(metadata.Id, item.ThreadId, StringComparison.OrdinalIgnoreCase))
+                throw new InvalidDataException("分页备份身份不匹配：" + backup);
+            if (string.Equals(backup, item.BackupPath, StringComparison.OrdinalIgnoreCase)) active = metadata;
+        }
+        if (active == null) throw new InvalidDataException("分页备份缺少当前入口元数据。");
+        EnsureRestoreIdentityAvailable(home, item.ThreadId);
+        active.Title = item.DisplayTitle; active.Preview = item.Preview; active.FirstUserMessage = item.Preview;
+        active.HasUserEvent = !string.IsNullOrWhiteSpace(item.Preview);
+        var installed = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        try {
+            foreach (var entry in files) {
+                string original = ValidateSessionTargetPath(Value(entry, "original_path"));
+                Directory.CreateDirectory(Path.GetDirectoryName(original));
+                string temporary = Path.Combine(Path.GetDirectoryName(original), Guid.NewGuid().ToString("N") + ".tmp");
+                try {
+                    File.Copy(ValidateTrashPath(Value(entry, "backup_path")), temporary, false);
+                    if (ProjectPayloadService.Sha256File(temporary) != Value(entry, "sha256")) throw new IOException("分页备份在恢复期间发生变化。");
+                    File.Move(temporary, original);
+                    installed.Add(original, Value(entry, "sha256"));
+                } finally { if (File.Exists(temporary)) File.Delete(temporary); }
+            }
+            RestoreThreadVisibility(home, active, ValidateSessionTargetPath(item.OriginalPath));
+        } catch (Exception error) {
+            // Retain every backup. Remove only files still identical to our writes.
+            var failures = new List<Exception> { error };
+            try { RemoveThreadVisibility(home, item.ThreadId, out _, out _, out _); } catch (Exception ex) { failures.Add(ex); }
+            foreach (var file in installed) {
+                try {
+                    if (File.Exists(file.Key)) {
+                        if (ProjectPayloadService.Sha256File(file.Key) != file.Value) throw new IOException("恢复文件已有后续修改，已保留：" + file.Key);
+                        File.Delete(file.Key);
+                    }
+                } catch (Exception ex) { failures.Add(ex); }
+            }
+            if (failures.Count > 1) throw new AggregateException("分页恢复未完成，所有备份均已保留。", failures);
+            throw;
+        }
+        // Registration succeeded; cleanup must not roll a complete restore back.
+        foreach (var entry in files) {
+            string backup = ValidateTrashPath(Value(entry, "backup_path"));
+            try { File.Delete(backup); File.Delete(backup + ".delete-info.json"); } catch { }
+        }
+    }
 
 	private static Dictionary<string, object> CreateTrashMetadata(DeletionTarget target, string backupPath)
 	{
@@ -523,7 +668,7 @@ internal static class ConversationStorage
 			{ "created_at", session.CreatedAt ?? string.Empty },
 			{ "updated_at", session.UpdatedAt ?? string.Empty },
 			{ "archived", session.Archived },
-			{ "compressed", session.Compressed },
+			{ "compressed", RolloutStorage.IsCompressed(target.SourcePath) },
 			{ "is_subagent", session.IsSubagent },
 			{ "parent_thread_id", session.ParentThreadId ?? string.Empty },
 			{ "official_delete", false }

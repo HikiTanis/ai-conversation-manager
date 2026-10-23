@@ -1,10 +1,10 @@
 # AI Conversation Manager
 
-> **v2.0.2 fixes deletion blocked by paginated rollouts in v2.0.1.** Upgrade using the complete package.
+> **v2.0.3 fixes deletion blocked by paginated rollouts and legacy repair placeholders.** Upgrade using the complete package.
 
 **A Windows desktop application for Codex and DeepSeek Harness (DSH) conversations, projects and backups.**
 
-[简体中文](README.md) · **Stable v2.0.2** · [Download](https://github.com/HikiTanis/ai-conversation-manager/releases/tag/v2.0.2)
+[简体中文](README.md) · **Stable v2.0.3** · [Download](https://github.com/HikiTanis/ai-conversation-manager/releases/tag/v2.0.3)
 
 Version 2.0.0 is a full desktop architecture upgrade: React + TypeScript UI, a Tauri + Rust host, and separate read/operation bridges to the retained C# and Node storage engines. The product replaces the Codex Conversation Manager name; the repository is now named ai-conversation-manager. This is an independent community project, unaffiliated with OpenAI or DeepSeek.
 
@@ -12,8 +12,8 @@ Version 2.0.0 is a full desktop architecture upgrade: React + TypeScript UI, a T
 
 ## Downloads
 
-- `AI-Conversation-Manager-2.0.2-Windows-x64-Setup.exe`: per-user installer.
-- `AI-Conversation-Manager-2.0.2-Windows-x64-Portable.zip`: extract the entire folder and run `Start.cmd`.
+- `AI-Conversation-Manager-2.0.3-Windows-x64-Setup.exe`: per-user installer.
+- `AI-Conversation-Manager-2.0.3-Windows-x64-Portable.zip`: extract the entire folder and run `Start.cmd`.
 - `SHA256SUMS.txt`: verify both downloads with `Get-FileHash -Algorithm SHA256`.
 
 Requires Windows 10/11 x64, .NET Framework 4.8 and WebView2. The installer downloads WebView2 if missing. Node.js and its license are bundled; retain the whole `engine/` directory. No development toolchain is needed to run the application. Binaries are not Authenticode-signed.

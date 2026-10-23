@@ -35,6 +35,7 @@ type TrashItem = {
 };
 type DeletePlan = {
   token: string;
+  fileCount?: number;
   sessions: { id: string; title: string; subagent: boolean }[];
   paths: string[];
   remaining: number;
@@ -1002,6 +1003,14 @@ export function Operations({
                     `${plan.sessions.length} conversations will be affected, including descendants.`,
                   )}
                 </p>
+                {plan.fileCount !== undefined && (
+                  <p>
+                    {t(
+                      `包含 ${plan.fileCount} 个会话文件（含分页片段）。`,
+                      `Includes ${plan.fileCount} conversation files (including history fragments).`,
+                    )}
+                  </p>
+                )}
                 <ul className="operation-scope">
                   {plan.sessions.map((s) => (
                     <li key={s.id}>

@@ -112,12 +112,15 @@ internal static class DesktopOperations
             paths = batchPaths.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
         }
         var remainingSessions = all.Where(s => !affected.Contains(s) && paths.Any(p => !string.IsNullOrWhiteSpace(s.Cwd) && TextHelpers.IsWithin(s.Cwd, p))).ToList();
-        string fingerprint = Hash(home + "\n" + batchDelete + "\n" + request.permanent + "\n" + modeProject + "\n" + string.Join("\n", paths.OrderBy(p => p)) + "\n" + string.Join("\n", remainingSessions.OrderBy(s => s.ThreadId).Select(s => s.ThreadId + "|" + s.Cwd)) + "\n" + string.Join("\n", affected.OrderBy(s => s.ThreadId).Select(s => {
+        var deletionFiles = BackendContext.IsDsh ? affected.Select(s => s.SessionPath).ToList() :
+            roots.SelectMany(root => ConversationStorage.PreviewDeletionFiles(root, closures[root])).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        string fileFingerprint = string.Join("\n", deletionFiles.OrderBy(path => path, StringComparer.OrdinalIgnoreCase).Select(path => path + "|" + ProjectPayloadService.Sha256File(path)));
+        string fingerprint = Hash(fileFingerprint + "\n" + home + "\n" + batchDelete + "\n" + request.permanent + "\n" + modeProject + "\n" + string.Join("\n", paths.OrderBy(p => p)) + "\n" + string.Join("\n", remainingSessions.OrderBy(s => s.ThreadId).Select(s => s.ThreadId + "|" + s.Cwd)) + "\n" + string.Join("\n", affected.OrderBy(s => s.ThreadId).Select(s => {
             var info = new FileInfo(s.SessionPath);
             return s.ThreadId + "|" + s.ParentThreadId + "|" + s.SessionPath + "|" + (info.Exists ? info.Length + "|" + info.LastWriteTimeUtc.Ticks : "missing");
         })));
         if (request.action == "planDelete") return new { token = fingerprint, sessions = affected.Select(s => new { id = s.ThreadId, title = s.DisplayTitle, subagent = s.IsSubagent }).ToArray(), paths,
-            remaining = remainingSessions.Count };
+            remaining = remainingSessions.Count, fileCount = deletionFiles.Count };
         if (request.action != "delete") throw new InvalidDataException("Unsupported operation.");
         if (request.token != fingerprint) throw new InvalidOperationException("Deletion scope or files changed. Review the refreshed scope before deleting.");
         if (modeProject == ProjectDeleteMode.Permanent) RequireProjectConfirmation(paths, request.projectConfirmation);
@@ -138,7 +141,7 @@ internal static class DesktopOperations
                         if (roots.Any(r => r.SessionPath == result.OriginalPath && string.Equals(projectByRoot[r], path, StringComparison.OrdinalIgnoreCase)))
                             ProviderStorage.MarkProjectHandled(backup, path, modeProject);
             }
-        } catch (Exception error) { throw new InvalidOperationException(error.Message + "\nCompleted conversation roots:\n" + string.Join("\n", completed), error); }
+        } catch (Exception error) { throw new InvalidOperationException(error.Message + L("\n已确认完成的主对话：\n", "\nCompleted conversation roots:\n") + (completed.Count == 0 ? L("无", "None") : string.Join("\n", completed)), error); }
         return Message(L("已处理 " + affected.Count + " 条对话。", "Deleted " + affected.Count + " conversation(s)."));
     }
 

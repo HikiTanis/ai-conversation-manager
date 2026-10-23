@@ -51,8 +51,13 @@ internal static class CodexCatalog
 		string path = Path.Combine(text, "session_index.jsonl");
 		int num = ApplyRolloutMetadata(sessions, text);
 		ApplyIndexedParentRelationships(sessions, text);
+        var currentPaths = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        string activeDatabase = WinSqliteMaintenance.FindActiveDatabase(text);
+        if (!string.IsNullOrWhiteSpace(activeDatabase))
+            foreach (var thread in WinSqliteReader.ReadThreads(activeDatabase))
+                if (!string.IsNullOrWhiteSpace(thread.Id) && !string.IsNullOrWhiteSpace(thread.RolloutPath)) currentPaths[thread.Id] = TextHelpers.CanonicalPath(RolloutStorage.ResolveExistingPath(TextHelpers.StripExtendedPrefix(thread.RolloutPath)));
 		Dictionary<string, SessionInfo> dictionary = sessions.Where((SessionInfo x) => !string.IsNullOrWhiteSpace(x.ThreadId)).GroupBy((SessionInfo x) => x.ThreadId, StringComparer.OrdinalIgnoreCase).ToDictionary((IGrouping<string, SessionInfo> group) => group.Key, (IGrouping<string, SessionInfo> group) => (from x in @group
-			orderby x.MetadataVerified descending, x.UpdatedDate descending
+			orderby (currentPaths.TryGetValue(x.ThreadId, out string currentPath) && currentPath == TextHelpers.CanonicalPath(x.SessionPath)) descending, x.MetadataVerified descending, x.UpdatedDate descending
 			select x).First(), StringComparer.OrdinalIgnoreCase);
 		Dictionary<string, string> dictionary2 = ReadSessionIndex(path);
 		catalogResult2.UsedCodexIndex = num > 0 && dictionary2.Count > 0;

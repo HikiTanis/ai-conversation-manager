@@ -165,3 +165,33 @@ test('Codex diagnostics preserve compressed rollouts with plain index paths', ()
   success({...args, action:'repair', token:'old-deletion-plan'});
   assert.deepEqual(snapshot(home), before);
 });
+
+
+test('Codex paginated groups use indexed entry and fingerprint every fragment', () => {
+  const home = path.join(work, 'paged-scope'); fs.cpSync(source.codex, home, { recursive: true });
+  const args = {provider: 'codex', home};
+  const initial = success({...args, action:'list'}, true).projects[0];
+  const child = initial.sessions.find(s=>s.subagent), main=initial.sessions.find(s=>s.id===child.parentId);
+  const unrelated=initial.sessions.find(s=>!s.subagent && s.id!==main.id);
+  const lines=fs.readFileSync(main.path,'utf8').trim().split('\n');
+  const meta=JSON.parse(lines[0]);meta.ordinal=0;meta.payload.history_mode='paginated';
+  lines[0]=JSON.stringify(meta);fs.writeFileSync(main.path,lines.join('\n')+'\n');
+  const active=path.join(path.dirname(main.path),'rollout-paged-'+main.id+'_'+crypto.randomUUID()+'.jsonl');
+  meta.ordinal=1604;meta.payload.history_base={thread_id:main.id,end_ordinal_exclusive:1604,end_byte_offset:10};
+  fs.writeFileSync(active,JSON.stringify(meta)+'\n');
+  const {DatabaseSync}=require('node:sqlite'), db=new DatabaseSync(path.join(home,'state_5.sqlite'));
+  db.exec('create table threads(id text primary key, rollout_path text, cwd text, title text, source text, parent_thread_id text)');
+  for(const s of initial.sessions) db.prepare('insert into threads values(?,?,?,?,?,?)').run(s.id,s.id===main.id?active:s.path,initial.path,s.title,'cli',s.parentId||'');
+  db.close();
+  const before=snapshot(home), current=success({...args, action:'list'},true).projects.flatMap(p=>p.sessions).find(s=>s.id===main.id);
+  assert.equal(current.path,active,'catalog must use the indexed current fragment');
+  const unrelatedPlan=success({...args,action:'planDelete',ids:[unrelated.id],projectMode:'none'});
+  assert.equal(unrelatedPlan.fileCount,1,'unrelated multi-file conversation must not block deletion');
+  const plan=success({...args,action:'planDelete',ids:[main.id],projectMode:'none'});
+  assert.equal(plan.fileCount,plan.sessions.length+1,'scope must include every fragment and descendants');
+  assert.deepEqual(snapshot(home),before,'planning must be read-only');
+  fs.appendFileSync(main.path,'\n');
+  const changed=snapshot(home), rejected=request({...args,action:'delete',ids:[main.id],projectMode:'none',token:plan.token});
+  assert.equal(rejected.ok,false);assert.match(rejected.error,/changed/i);
+  assert.deepEqual(snapshot(home),changed,'stale older-fragment plan must perform no writes');
+});

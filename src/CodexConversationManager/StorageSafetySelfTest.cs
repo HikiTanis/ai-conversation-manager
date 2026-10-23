@@ -117,6 +117,77 @@ internal static class StorageSafetySelfTest
                 Assert(reader.ReadToEnd() == fragmentText, "selected fragment backup changed bytes");
             Assert(calls == 2, "selected paginated fragment was not deletable");
 
+            SessionInfo Paged(string pagedHome, string pagedId)
+            {
+                SessionInfo last = null;
+                foreach (int ordinal in new[] { 0, 549, 668, 1604, 4723 }) {
+                    last = Session(pagedHome, pagedId, "page-" + ordinal);
+                    string body = JsonSerialization.NewSerializer().Serialize(new {
+                        ordinal, type = "session_meta", payload = new {
+                            id = pagedId, session_id = pagedId, cwd = root, history_mode = "paginated", source = "cli", thread_source = "user"
+                        }
+                    }) + "\n";
+                    File.WriteAllText(last.SessionPath, body);
+                    if (ordinal == 668) { RolloutStorage.EncodeFile(last.SessionPath, last.SessionPath + ".zst"); File.Delete(last.SessionPath); }
+                }
+                TargetedThreadIndexer.IndexMetadata(pagedHome, TargetedThreadIndexer.ReadIdentityMetadata(last.SessionPath));
+                return last;
+            }
+            home = Setup("paged-group"); session = Paged(home, id); child = Session(home, childId, "child", id);
+            var pagedPaths = RolloutStorage.EnumerateStrict(home).ToDictionary(p => p, ProjectPayloadService.Sha256File);
+            string activePath = session.SessionPath;
+            var catalogPaged = CodexCatalog.Build(NativeSessionCatalog.Scan(home), home).Projects.SelectMany(p => p.Sessions).Single(s => s.ThreadId == id);
+            Assert(catalogPaged.SessionPath == activePath, "catalog chose an old fragment instead of the indexed entry");
+            Assert(ConversationStorage.PreviewDeletionFiles(session, new[] {session, child}).Count == 6, "preview omitted paginated files");
+            calls = 0;
+            CodexAppServerThreadDeletion.TestOverride = (_, __) => { calls++; return new OfficialThreadDeletionResult { Succeeded = true }; };
+            var groupDeleted = ConversationStorage.MoveToTrash(session, root, new[] {session, child});
+            Assert(calls == 1 && groupDeleted.AffectedConversationCount == 2 && groupDeleted.BackupPaths.Count == 6, "pagination changed conversation count or deletion calls");
+            Assert(pagedPaths.Keys.All(p => !File.Exists(p)), "deletion left an old fragment");
+            var groupTrash = ConversationStorage.ReadTrash();
+            Assert(groupTrash.Count == 2, "fragment group was split into independent trash entries");
+            var groupItem = groupTrash.Single(t => t.ThreadId == id);
+            string occupied = pagedPaths.Keys.First(p => p != activePath && p.Contains(id) && p.EndsWith(".jsonl"));
+            File.WriteAllText(occupied, "another writer owns this path");
+            Refuses(() => ConversationStorage.Restore(groupItem), "group restore conflict");
+            Assert(groupDeleted.BackupPaths.All(File.Exists), "restore conflict consumed group backup");
+            File.Delete(occupied);
+            ConversationStorage.Restore(groupItem);
+            ConversationStorage.Restore(groupTrash.Single(t => t.ThreadId == childId));
+            Assert(pagedPaths.All(p => File.Exists(p.Key) && ProjectPayloadService.Sha256File(p.Key) == p.Value), "group restore changed raw fragment bytes");
+            Assert(TextHelpers.CanonicalPath(WinSqliteReader.ReadThreads(Path.Combine(home, "state_5.sqlite")).Single(t => t.Id == id).RolloutPath) == TextHelpers.CanonicalPath(activePath), "group restore changed current entry");
+            var permanentGroup = ConversationStorage.DeletePermanently(session, new[] {session, child});
+            Assert(permanentGroup.AffectedConversationCount == 2 && pagedPaths.Keys.All(p => !File.Exists(p)), "permanent deletion left fragments");
+            session = Paged(home, id);
+            groupDeleted = ConversationStorage.MoveToTrash(session);
+            groupItem = ConversationStorage.ReadTrash().Single(t => t.ThreadId == id);
+            var newCurrent = Session(home, id, "new-current");
+            string currentHash = ProjectPayloadService.Sha256File(Path.Combine(home, "state_5.sqlite"));
+            ConversationStorage.DeleteFromTrash(groupItem);
+            Assert(groupDeleted.BackupPaths.All(p => !File.Exists(p)) && File.Exists(newCurrent.SessionPath) && ProjectPayloadService.Sha256File(Path.Combine(home, "state_5.sqlite")) == currentHash, "purging grouped backup touched current data");
+
+            home = Setup("repair-placeholder-pair"); session = Session(home, id);
+            string compressedPath = session.SessionPath + ".zst";
+            RolloutStorage.EncodeFile(session.SessionPath, compressedPath);
+            string compressedHash = ProjectPayloadService.Sha256File(compressedPath);
+            string placeholder = JsonSerialization.NewSerializer().Serialize(new { type = "session_meta", payload = new { id, cwd = root, cli_version = "sidebar-remnant-repair" } }) + "\n";
+            File.WriteAllText(session.SessionPath, placeholder);
+            Assert(ConversationStorage.PreviewDeletionFiles(session, new[] {session}).Count == 2, "repair placeholder blocked real compressed history");
+            File.AppendAllText(session.SessionPath, "{\"type\":\"event_msg\",\"payload\":{}}\n");
+            Refuses(() => ConversationStorage.PreviewDeletionFiles(session, new[] {session}), "repair marker with additional history");
+            File.WriteAllText(session.SessionPath, placeholder);
+            ConversationStorage.MoveToTrash(session);
+            backup = ConversationStorage.ReadTrash().Single();
+            Assert(backup.OriginalPath == compressedPath, "repair placeholder became restore entry");
+            ConversationStorage.Restore(backup);
+            Assert(File.ReadAllText(session.SessionPath) == placeholder && ProjectPayloadService.Sha256File(compressedPath) == compressedHash, "repair pair restore changed either file");
+            Assert(TextHelpers.CanonicalPath(WinSqliteReader.ReadThreads(Path.Combine(home, "state_5.sqlite")).Single(t => t.Id == id).RolloutPath) == TextHelpers.CanonicalPath(compressedPath), "restore indexed placeholder");
+
+            home = Setup("unrelated-duplicates"); session = Session(home, id); child = Session(home, childId, "ambiguous");
+            File.Copy(child.SessionPath, Path.Combine(Path.GetDirectoryName(child.SessionPath), "duplicate.jsonl"));
+            Assert(ConversationStorage.PreviewDeletionFiles(session, new[] {session}).Count == 1, "unrelated duplicate blocked selected conversation");
+            Refuses(() => ConversationStorage.PreviewDeletionFiles(child, new[] {child}), "selected ambiguous legacy duplicate");
+
             home = Setup("import-races"); session = Session(home, id);
             string bundle = Path.Combine(root, "race.codexbundle"); ExactBundleWriter.CreateSingleSessionBundle(session, bundle);
             string destinationHome = Path.Combine(root, "race-target"); Directory.CreateDirectory(destinationHome);
