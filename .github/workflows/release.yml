@@ -43,7 +43,7 @@ jobs:
           $version = [IO.File]::ReadAllText('VERSION').Trim()
           $tag = "v$version"
           $base = "release/v$version/AI-Conversation-Manager-$version-Windows-x64"
-          $assets = @("$base-Setup.exe", "$base-Portable.zip", "release/v$version/SHA256SUMS.txt")
+          $assets = @("$base-Setup.exe", "$base-Portable.zip", "release/v$version/SHA256SUMS.txt", "release/v$version/update.json")
           $notes = "docs/releases/v$version.md"
           $title = "AI Conversation Manager v$version"
           $releases = gh release list --repo $env:GITHUB_REPOSITORY --limit 1000 --json tagName | ConvertFrom-Json

@@ -54,6 +54,18 @@ Copy-Item -LiteralPath $installer -Destination $setup -Force
 Copy-Item -LiteralPath (Join-Path $desktopRoot 'packaging/README.txt') -Destination $releaseRoot -Force
 $checksums = foreach ($file in @($setup, $zip)) { "$((Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant())  $([IO.Path]::GetFileName($file))" }
 $checksums | Set-Content -LiteralPath (Join-Path $releaseRoot 'SHA256SUMS.txt') -Encoding ascii
+$notes = [IO.File]::ReadAllText((Join-Path $repoRoot "docs/releases/v$version.md"))
+$updateAssets = foreach ($file in @($setup, $zip)) {
+    $asset = Get-Item -LiteralPath $file
+    @{
+        name = $asset.Name
+        browser_download_url = "https://github.com/HikiTanis/ai-conversation-manager/releases/download/v$version/$($asset.Name)"
+        size = $asset.Length
+        digest = 'sha256:' + (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+}
+$updateManifest = @{tag_name="v$version"; draft=$false; prerelease=$false; body=$notes; published_at=[DateTime]::UtcNow.ToString('o'); assets=@($updateAssets)} | ConvertTo-Json -Depth 6
+[IO.File]::WriteAllText((Join-Path $releaseRoot 'update.json'), $updateManifest, [Text.UTF8Encoding]::new($false))
 # Only delete the freshly generated staging folder inside this release directory.
 $resolvedStage = [IO.Path]::GetFullPath($stage)
 $releasePrefix = [IO.Path]::GetFullPath($releaseRoot).TrimEnd('\') + '\'

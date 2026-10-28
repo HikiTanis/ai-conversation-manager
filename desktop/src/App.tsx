@@ -1,6 +1,8 @@
 import { ConversationView } from "./ConversationView";
 import { Icon } from "./components/Icon";
 import { Operations, type Command } from "./Operations";
+import { Updates } from "./Updates";
+import { version as appVersion } from "../package.json";
 import { isTauri } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-dialog";
 import { Button, Input, Card, Dialog, Menu } from "./components/ui";
@@ -59,7 +61,8 @@ export default function App({
   const [page, setPage] = useState<"manage" | "import">("manage");
   const [catalogBusy, setBusy] = useState(false);
   const [operationBusy, setOperationBusy] = useState(false);
-  const busy = catalogBusy || operationBusy;
+  const [updateBusy, setUpdateBusy] = useState(false);
+  const busy = catalogBusy || operationBusy || updateBusy;
   const [command, setCommand] = useState<Command | null>(null);
   const operationsHome = useRef("");
   const [error, setError] = useState("");
@@ -268,6 +271,12 @@ export default function App({
           </Button>
         </nav>
         <div className="spacer" />
+        <Updates
+          lang={lang}
+          enabled={gateway === nativeGateway && isTauri()}
+          busy={catalogBusy || operationBusy}
+          onBusy={setUpdateBusy}
+        />
         <Button
           variant="text"
           className="trash-entry"
@@ -333,7 +342,7 @@ export default function App({
               : t("查看演示", "View demo")}
           </Button>
           <span className="menu-caption">
-            {t("v2.0.0 · 本地运行", "v2.0.0 · Local")}
+            {t(`v${appVersion} · 本地运行`, `v${appVersion} · Local`)}
           </span>
         </Menu>
       </header>

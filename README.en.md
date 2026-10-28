@@ -1,5 +1,7 @@
 # AI Conversation Manager
 
+The upcoming **2.1.0** adds startup update checks and in-app upgrades for installed and portable builds. See [update behavior](docs/UPDATES.md). Versions 2.0.3 and earlier need one manual upgrade to acquire the updater.
+
 > **v2.0.3 fixes deletion blocked by paginated rollouts and legacy repair placeholders.** Upgrade using the complete package.
 
 **A Windows desktop application for Codex and DeepSeek Harness (DSH) conversations, projects and backups.**

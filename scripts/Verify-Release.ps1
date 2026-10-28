@@ -26,10 +26,14 @@ if ($PackagePath) {
     if ($package.Name -ne "$base-Portable.zip") { throw 'Unexpected package name.' }
     $setup = Join-Path $package.DirectoryName "$base-Setup.exe"
     $hashes = Get-Content (Join-Path $package.DirectoryName 'SHA256SUMS.txt')
+    $updateManifest = Get-Content (Join-Path $package.DirectoryName 'update.json') -Raw | ConvertFrom-Json
+    if ($updateManifest.tag_name -ne "v$Version" -or $updateManifest.draft -or $updateManifest.prerelease -or @($updateManifest.assets).Count -ne 2) { throw 'Invalid update manifest.' }
     foreach ($file in @($package.FullName,$setup)) {
         $hash = (Get-FileHash -LiteralPath $file -Algorithm SHA256).Hash
         $name = [IO.Path]::GetFileName($file)
         if (!($hashes | Where-Object { $_ -ieq "$hash  $name" })) { throw "Checksum mismatch: $name" }
+        $asset = @($updateManifest.assets | Where-Object name -eq $name)
+        if ($asset.Count -ne 1 -or $asset[0].digest -ine "sha256:$hash" -or $asset[0].size -ne (Get-Item -LiteralPath $file).Length -or $asset[0].browser_download_url -ne "https://github.com/HikiTanis/ai-conversation-manager/releases/download/v$Version/$name") { throw "Update manifest mismatch: $name" }
     }
     Add-Type -AssemblyName System.IO.Compression.FileSystem
     $archive = [IO.Compression.ZipFile]::OpenRead($package.FullName)

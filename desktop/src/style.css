@@ -1335,6 +1335,54 @@ dialog::backdrop {
   padding: 8px 20px;
   color: var(--color-danger, #a33);
 }
+.update-dialog {
+  width: min(620px, calc(100vw - 40px));
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  padding: 24px;
+}
+.update-heading,
+.update-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.update-heading {
+  justify-content: space-between;
+}
+.update-heading h2 {
+  margin: 0;
+}
+.update-preference {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.update-notes {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  max-height: 220px;
+  overflow: auto;
+  font: inherit;
+  line-height: 1.6;
+  padding: 14px;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+}
+.update-actions {
+  justify-content: flex-end;
+  margin-top: 24px;
+  flex-wrap: wrap;
+}
+.update-dialog progress {
+  width: 100%;
+  accent-color: var(--color-accent);
+}
+.update-error {
+  color: var(--color-danger, #a33);
+  overflow-wrap: anywhere;
+}
 .preview-footer {
   display: flex;
   align-items: center;

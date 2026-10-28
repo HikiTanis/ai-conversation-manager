@@ -5,6 +5,7 @@ use std::{io::{Read, Write}, path::PathBuf, process::{Command, Stdio}, time::{Du
 use tauri::Manager;
 use std::sync::atomic::{AtomicBool, Ordering};
 static OPERATING: AtomicBool = AtomicBool::new(false);
+mod updater;
 struct OperationGuard;
 impl Drop for OperationGuard { fn drop(&mut self) { OPERATING.store(false, Ordering::SeqCst); } }
 
@@ -124,9 +125,10 @@ async fn read_catalog(app: tauri::AppHandle, request: ReadRequest) -> Result<ser
     tauri::async_runtime::spawn_blocking(move || execute(engine, request)).await.map_err(|e| e.to_string())?
 }
 fn main() {
+    if updater::run_helper() { return; }
     tauri::Builder::default().plugin(tauri_plugin_dialog::init())
         .on_window_event(|_, event| { if let tauri::WindowEvent::CloseRequested { api, .. } = event { if OPERATING.load(Ordering::SeqCst) { api.prevent_close(); } } })
-        .invoke_handler(tauri::generate_handler![read_catalog, run_operation])
+        .invoke_handler(tauri::generate_handler![read_catalog, run_operation, updater::check_update, updater::install_update])
         .run(tauri::generate_context!()).expect("Unable to start AI Conversation Manager");
 }
 #[cfg(test)]

@@ -41,6 +41,7 @@ try {
     }
     npm run desktop:build
     if ($LASTEXITCODE -ne 0) { throw 'Tauri build failed' }
+    if (!$SkipTests) { & (Join-Path $desktopRoot 'tests/updater-smoke.ps1') }
     $destination = Join-Path $repoRoot 'artifacts/desktop'
     New-Item -ItemType Directory -Path $destination -Force | Out-Null
     Copy-Item -LiteralPath (Join-Path $desktopRoot 'src-tauri/target/release/conversation-manager-desktop.exe') -Destination $destination -Force
