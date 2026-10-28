@@ -1,10 +1,10 @@
 # AI Conversation Manager · AI 对话管理器
 
-> **v2.0.3 修复了分页文件与旧修复占位文件被误判为重复会话、阻塞删除的问题。** 请使用完整新版包。
+> **v2.1.0 已发布：新增启动自动检查与软件内更新。** 2.0.3 及更早版本请先手动安装一次新版。
 
 **在一个 Windows 桌面应用里管理 Codex 与 DeepSeek Harness（DSH）的对话、项目和备份。**
 
-[English](README.en.md) · **正式版 v2.0.3** · [下载安装包](https://github.com/HikiTanis/ai-conversation-manager/releases/tag/v2.0.3) · [完整更新说明](docs/releases/v2.0.3.md)
+[English](README.en.md) · **正式版 v2.1.0** · [下载安装包](https://github.com/HikiTanis/ai-conversation-manager/releases/tag/v2.1.0) · [完整更新说明](docs/releases/v2.1.0.md)
 
 2.0.0 是桌面架构全面升级的正式版本：界面改用 **React + TypeScript**，桌面宿主改用 **Tauri + Rust**，通过独立读写桥接复用经过验证的 C#／Node 存储与事务引擎。新版统一了 Codex 与 DSH 的使用流程，增加压缩会话支持、连续阅读、完整数字导航与持久缓存。旧版名称 Codex Conversation Manager 更名为 AI Conversation Manager；仓库已更名为 ai-conversation-manager。
 
@@ -14,12 +14,12 @@
 
 ## 下载与运行
 
-在 [v2.0.3 Releases](https://github.com/HikiTanis/ai-conversation-manager/releases/tag/v2.0.3) 下载：
+在 [v2.1.0 Releases](https://github.com/HikiTanis/ai-conversation-manager/releases/tag/v2.1.0) 下载：
 
 | 文件 | 用途 |
 | --- | --- |
-| `AI-Conversation-Manager-2.0.3-Windows-x64-Setup.exe` | 正式安装包，中英文安装向导，按当前用户安装 |
-| `AI-Conversation-Manager-2.0.3-Windows-x64-Portable.zip` | 免安装版，完整解压后运行 `Start.cmd` |
+| `AI-Conversation-Manager-2.1.0-Windows-x64-Setup.exe` | 正式安装包，中英文安装向导，按当前用户安装 |
+| `AI-Conversation-Manager-2.1.0-Windows-x64-Portable.zip` | 免安装版，完整解压后运行 `Start.cmd` |
 | `SHA256SUMS.txt` | 安装包与 ZIP 的 SHA-256 校验值 |
 
 运行环境：**Windows 10/11 x64、.NET Framework 4.8、Microsoft Edge WebView2 Runtime**。安装包会在缺少 WebView2 时联网安装；免安装版使用系统已有的 WebView2。Node.js 运行时随包附带，普通使用不需要 Rust、C++、Node.js 或 .NET SDK。主程序旁的 `engine/` 必须保留。
@@ -28,9 +28,15 @@
 
 从 1.x 升级：安装到新目录或完整解压新版，再选择原有 Codex／DSH 数据目录。无需转换原始会话或旧备份。新版不会自动卸载旧 WPF 程序；请避免两个版本同时修改同一份数据。
 
-## 2.0.0 的主要更新
+## 2.1.0 的主要更新
 
-开发中的 **2.1.0** 增加启动自动检查与软件内更新。使用方式与更新保护见 [更新功能说明](docs/UPDATES.md)。2.0.3 及更早版本需要先手动安装一次带更新模块的版本。
+正式版 **2.1.0** 增加启动自动检查与软件内更新。使用方式与更新保护见 [更新功能说明](docs/UPDATES.md)。2.0.3 及更早版本需要先手动安装一次带更新模块的版本。
+
+- 启动时检查新版，展示更新说明；确认后下载、校验、安装并重启。支持手动检查、关闭自动检查和失败重试。
+- 安装版保留安装目录；便携版保留旧程序备份，替换失败时尝试回滚。更新与会话写入互斥。
+- 发布清单、GitHub API 和公开发布页提供更新源回退。
+
+## 2.0.0 的主要更新
 
 - **桌面架构全面升级**：React／TypeScript 负责界面，Tauri／Rust 负责桌面窗口、原生文件选择与受限命令，C#／Node 负责数据兼容与事务。
 - **统一工作区**：项目侧栏、主对话／子代理、归档筛选、跨项目勾选、备份、导入、回收站和维护入口。

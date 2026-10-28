@@ -2,7 +2,7 @@
 
 All notable changes are documented here. The project follows semantic versioning for public releases.
 
-## [2.1.0] - Unreleased
+## [2.1.0] - 2026-10-28
 
 - 启动时后台检查 GitHub 最新正式版；发现更新后显示版本和说明，用户确认后才下载、安装并重启。支持关闭自动检查和手动重新检查。
 - 安装版调用 NSIS 原目录升级；便携版校验完整包后替换程序文件，保留旧文件备份，替换失败时回滚。
