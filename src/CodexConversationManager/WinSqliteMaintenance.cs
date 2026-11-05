@@ -470,8 +470,14 @@ internal static class WinSqliteMaintenance
 		{
 			return string.Empty;
 		}
-		string path = Path.GetFullPath(Path.Combine(codexHome, "sqlite", "codex-dev.db"));
-		return File.Exists(path) ? path : string.Empty;
+		// Current desktop releases use codex.db. A migrated profile can retain
+		// codex-dev.db, so never let that stale catalog shadow the current one.
+		foreach (string name in new[] { "codex.db", "codex-dev.db" })
+		{
+			string path = Path.GetFullPath(Path.Combine(codexHome, "sqlite", name));
+			if (File.Exists(path)) return path;
+		}
+		return string.Empty;
 	}
 
 	public static int CountDesktopCatalogThreads(string codexHome, IEnumerable<string> threadIds)

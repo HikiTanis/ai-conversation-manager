@@ -1,5 +1,5 @@
 AI Conversation Manager / AI 对话管理器
-正式版 2.0.0 · Codex / DeepSeek Harness · Windows x64
+正式版 2.1.1 · Codex / DeepSeek Harness · Windows x64
 
 【免安装版】
 完整解压后运行 Start.cmd 或 conversation-manager-desktop.exe。
@@ -11,6 +11,10 @@ AI Conversation Manager / AI 对话管理器
 安装版可下载缺失的 WebView2；免安装版需要已有 WebView2。
 
 【升级】
+2.1.1 修复新版 Codex 桌面端删除会话后的侧栏残留。
+2.1.0 用户可使用软件内更新；更早版本需要手动升级。
+已经产生的残留需逐项核对，不会自动批量清理。
+
 2.0.0 全面升级桌面架构：React / TypeScript + Tauri / Rust，
 复用 C# / Node 存储引擎。支持连续阅读、完整数字导航、悬停摘录、
 持久预览缓存，以及 Codex 压缩历史预览、备份与迁移。
@@ -24,7 +28,7 @@ AI Conversation Manager / AI 对话管理器
 完整兼容边界与说明：
 https://github.com/HikiTanis/ai-conversation-manager
 
-Stable 2.0.0: extract the entire folder and run Start.cmd, or use the installer.
+Stable 2.1.1: extract the entire folder and run Start.cmd, or use the installer.
 Keep engine/ beside the executable. Node.js is bundled.
 Requires Windows 10/11 x64, .NET Framework 4.8 and WebView2.
 Exit the corresponding client before writing. Existing backup formats remain supported.

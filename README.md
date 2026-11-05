@@ -1,10 +1,10 @@
 # AI Conversation Manager · AI 对话管理器
 
-> **v2.1.0 已发布：新增启动自动检查与软件内更新。** 2.0.3 及更早版本请先手动安装一次新版。
+> **v2.1.1 修复新版 Codex 桌面端删除会话后侧栏条目残留的问题。** v2.1.0 用户可在软件内检查更新；2.0.3 及更早版本请手动安装。
 
 **在一个 Windows 桌面应用里管理 Codex 与 DeepSeek Harness（DSH）的对话、项目和备份。**
 
-[English](README.en.md) · **正式版 v2.1.0** · [下载安装包](https://github.com/HikiTanis/ai-conversation-manager/releases/tag/v2.1.0) · [完整更新说明](docs/releases/v2.1.0.md)
+[English](README.en.md) · **正式版 v2.1.1** · [下载安装包](https://github.com/HikiTanis/ai-conversation-manager/releases/tag/v2.1.1) · [完整更新说明](docs/releases/v2.1.1.md)
 
 2.0.0 是桌面架构全面升级的正式版本：界面改用 **React + TypeScript**，桌面宿主改用 **Tauri + Rust**，通过独立读写桥接复用经过验证的 C#／Node 存储与事务引擎。新版统一了 Codex 与 DSH 的使用流程，增加压缩会话支持、连续阅读、完整数字导航与持久缓存。旧版名称 Codex Conversation Manager 更名为 AI Conversation Manager；仓库已更名为 ai-conversation-manager。
 
@@ -14,12 +14,12 @@
 
 ## 下载与运行
 
-在 [v2.1.0 Releases](https://github.com/HikiTanis/ai-conversation-manager/releases/tag/v2.1.0) 下载：
+在 [v2.1.1 Releases](https://github.com/HikiTanis/ai-conversation-manager/releases/tag/v2.1.1) 下载：
 
 | 文件 | 用途 |
 | --- | --- |
-| `AI-Conversation-Manager-2.1.0-Windows-x64-Setup.exe` | 正式安装包，中英文安装向导，按当前用户安装 |
-| `AI-Conversation-Manager-2.1.0-Windows-x64-Portable.zip` | 免安装版，完整解压后运行 `Start.cmd` |
+| `AI-Conversation-Manager-2.1.1-Windows-x64-Setup.exe` | 正式安装包，中英文安装向导，按当前用户安装 |
+| `AI-Conversation-Manager-2.1.1-Windows-x64-Portable.zip` | 免安装版，完整解压后运行 `Start.cmd` |
 | `SHA256SUMS.txt` | 安装包与 ZIP 的 SHA-256 校验值 |
 
 运行环境：**Windows 10/11 x64、.NET Framework 4.8、Microsoft Edge WebView2 Runtime**。安装包会在缺少 WebView2 时联网安装；免安装版使用系统已有的 WebView2。Node.js 运行时随包附带，普通使用不需要 Rust、C++、Node.js 或 .NET SDK。主程序旁的 `engine/` 必须保留。

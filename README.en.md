@@ -2,11 +2,11 @@
 
 Stable **2.1.0** adds startup update checks and in-app upgrades for installed and portable builds. See [update behavior](docs/UPDATES.md). Versions 2.0.3 and earlier need one manual upgrade to acquire the updater.
 
-> **v2.1.0 is available with startup update checks and in-app upgrades.** Versions 2.0.3 and earlier require one manual upgrade.
+> **v2.1.1 fixes sidebar entries left behind after deletion in newer Codex Desktop releases.** Use in-app updates from v2.1.0; versions 2.0.3 and earlier require a manual upgrade.
 
 **A Windows desktop application for Codex and DeepSeek Harness (DSH) conversations, projects and backups.**
 
-[简体中文](README.md) · **Stable v2.1.0** · [Download](https://github.com/HikiTanis/ai-conversation-manager/releases/tag/v2.1.0)
+[简体中文](README.md) · **Stable v2.1.1** · [Download](https://github.com/HikiTanis/ai-conversation-manager/releases/tag/v2.1.1)
 
 Version 2.0.0 is a full desktop architecture upgrade: React + TypeScript UI, a Tauri + Rust host, and separate read/operation bridges to the retained C# and Node storage engines. The product replaces the Codex Conversation Manager name; the repository is now named ai-conversation-manager. This is an independent community project, unaffiliated with OpenAI or DeepSeek.
 
@@ -14,8 +14,8 @@ Version 2.0.0 is a full desktop architecture upgrade: React + TypeScript UI, a T
 
 ## Downloads
 
-- `AI-Conversation-Manager-2.1.0-Windows-x64-Setup.exe`: per-user installer.
-- `AI-Conversation-Manager-2.1.0-Windows-x64-Portable.zip`: extract the entire folder and run `Start.cmd`.
+- `AI-Conversation-Manager-2.1.1-Windows-x64-Setup.exe`: per-user installer.
+- `AI-Conversation-Manager-2.1.1-Windows-x64-Portable.zip`: extract the entire folder and run `Start.cmd`.
 - `SHA256SUMS.txt`: verify both downloads with `Get-FileHash -Algorithm SHA256`.
 
 Requires Windows 10/11 x64, .NET Framework 4.8 and WebView2. The installer downloads WebView2 if missing. Node.js and its license are bundled; retain the whole `engine/` directory. No development toolchain is needed to run the application. Binaries are not Authenticode-signed.
@@ -28,7 +28,7 @@ Install or extract into a new directory when upgrading from 1.x. Existing data a
 - Installed builds retain their directory; portable builds back up old files and attempt rollback if replacement fails.
 - Update installation and conversation writes are mutually exclusive. Release manifests, the GitHub API and public release pages provide fallback update sources.
 
-See [release notes](docs/releases/v2.1.0.md) and [update behavior](docs/UPDATES.md).
+See [release notes](docs/releases/v2.1.1.md) and [update behavior](docs/UPDATES.md).
 
 ## Features introduced in 2.0.0
 

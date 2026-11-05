@@ -2,6 +2,12 @@
 
 All notable changes are documented here. The project follows semantic versioning for public releases.
 
+## [2.1.1] - 2026-11-05
+
+- 修复新版 Codex 桌面端使用 sqlite/codex.db 时，删除会话后侧栏条目残留的问题。优先处理正式版目录，旧环境继续兼容 codex-dev.db。
+- 增加新旧目录并存、指定条目删除、无关条目保留和回收站备份的回归验证。
+- 已产生的历史残留需要按具体会话核对；不会根据文件缺失自动批量清理。
+
 ## [2.1.0] - 2026-10-28
 
 - 启动时后台检查 GitHub 最新正式版；发现更新后显示版本和说明，用户确认后才下载、安装并重启。支持关闭自动检查和手动重新检查。

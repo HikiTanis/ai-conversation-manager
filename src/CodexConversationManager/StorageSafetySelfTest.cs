@@ -57,6 +57,26 @@ internal static class StorageSafetySelfTest
             ConversationIndexMaintenance.InvalidateCompletedRepairCaches(home);
             Assert(WinSqliteMaintenance.CountDesktopCatalogThreads(home, new[] { id }) == 1, "ledger replay deleted restored catalog");
 
+            home = Setup("current-desktop-catalog"); session = Session(home, id);
+            WinSqliteMaintenance.AddDesktopCatalogTestThread(home, id, "delete selected", root);
+            WinSqliteMaintenance.AddDesktopCatalogTestThread(home, childId, "keep unrelated", root);
+            string legacyCatalog = Path.Combine(home, "sqlite", "codex-dev.db");
+            string currentCatalog = Path.Combine(home, "sqlite", "codex.db");
+            File.Move(legacyCatalog, currentCatalog);
+            // Preserve a stale pre-migration database alongside the active catalog.
+            File.Copy(currentCatalog, legacyCatalog);
+            string legacyHash = ProjectPayloadService.Sha256File(legacyCatalog);
+            Assert(WinSqliteMaintenance.FindDesktopCatalogDatabase(home) == currentCatalog, "legacy catalog shadows current desktop catalog");
+            ConversationStorage.MoveToTrash(session);
+            Assert(WinSqliteMaintenance.CountDesktopCatalogThreads(home, new[] { id }) == 0, "deleted thread remains in current sidebar");
+            Assert(WinSqliteMaintenance.CountDesktopCatalogThreads(home, new[] { childId }) == 1, "unrelated current sidebar thread removed");
+            Assert(ProjectPayloadService.Sha256File(legacyCatalog) == legacyHash, "inactive legacy catalog was modified");
+            Assert(ConversationStorage.ReadTrash().Single().ThreadId == id, "current catalog deletion lost recovery copy");
+            File.Delete(currentCatalog);
+            Assert(WinSqliteMaintenance.FindDesktopCatalogDatabase(home) == legacyCatalog, "legacy-only desktop fallback failed");
+            var legacyRemoval = WinSqliteMaintenance.RemoveDesktopCatalogThreads(home, new[] { id });
+            Assert(legacyRemoval.RemovedCatalogEntryCount == 1 && WinSqliteMaintenance.CountDesktopCatalogThreads(home, new[] { childId }) == 1, "legacy-only targeted cleanup failed");
+
             home = Setup("lost-response"); session = Session(home, id); string original = File.ReadAllText(session.SessionPath);
             CodexAppServerThreadDeletion.TestOverride = (_, __) => { File.Delete(session.SessionPath); throw new TimeoutException("deleted but response lost"); };
             try { ConversationStorage.MoveToTrash(session); throw new Exception("timeout expected"); } catch (InvalidOperationException e) { Assert(e.InnerException is TimeoutException, "preserved cause"); }
